@@ -25,10 +25,16 @@ classdef TestSession < matlab.unittest.TestCase
 
             tc.TmpDir = tempdir;
             cd(tc.TmpDir);
+
+            warning('off', 'Session:noTransducerCal');
+
         end
     end
     methods (TestMethodTeardown)
         function tearDown(tc)
+
+            warning('on', 'Session:noTransducerCal');
+
             cd(tc.OriginalDir);
         end
     end
@@ -47,7 +53,6 @@ classdef TestSession < matlab.unittest.TestCase
             sess = Session('Test001', 'chinchilla', 'Tester');
             tc.verifyEqual(sess.SubjectID, 'Test001');
             tc.verifyEqual(sess.Species,   'chinchilla');
-            tc.verifyEqual(sess.Ear,       'right');
             tc.verifyEqual(sess.Operator,  'Tester');
             tc.verifyEqual(sess.RunCount,  0);
         end
@@ -88,7 +93,7 @@ classdef TestSession < matlab.unittest.TestCase
 
             params.measure_type = 'ABR';
             params.frequency_hz = 8000;
-            params.ear = 'right'; 
+            params.ear = 'right';
             data.epochs         = randn(10, 100);
             data.fs             = 48828.125;
 
@@ -103,7 +108,7 @@ classdef TestSession < matlab.unittest.TestCase
             sess = Session('Test001', 'chinchilla', 'Tester');
 
             params.measure_type = 'ABR';
-            params.ear = 'right'; 
+            params.ear = 'right';
             data.epochs         = randn(10, 100);
             data.fs             = 48828.125;
 
@@ -141,7 +146,7 @@ classdef TestSession < matlab.unittest.TestCase
             sess = Session('Test001', 'chinchilla', 'Tester');
 
             params.measure_type = 'ABR';
-            params.ear = 'right'; 
+            params.ear = 'right';
             data.epochs         = randn(10, 100);
             data.fs             = 48828.125;
 
@@ -161,7 +166,7 @@ classdef TestSession < matlab.unittest.TestCase
             sess = Session('Test001', 'chinchilla', 'Tester');
 
             params.measure_type = 'ABR';
-            params.ear = 'right'; 
+            params.ear = 'right';
             data.epochs         = randn(10, 100);
             data.fs             = 48828.125;
 
@@ -172,6 +177,35 @@ classdef TestSession < matlab.unittest.TestCase
                 'result should be a struct.');
             tc.verifyTrue(isempty(fieldnames(loaded.run.result)), ...
                 'result should be empty before analysis.');
+        end
+
+        function testInfoStructStoredCorrectly(tc)
+            info.sex      = 'Male';
+            info.location = 'Pitt-BSP1-311B';
+            info.notes    = 'baseline';
+
+            sess = Session('Test001', 'chinchilla', 'Tester', info);
+            tc.verifyEqual(sess.Info.sex,      'Male');
+            tc.verifyEqual(sess.Info.location, 'Pitt-BSP1-311B');
+            tc.verifyEqual(sess.Info.notes,    'baseline');
+        end
+
+        function testInfoMergedIntoSavedFile(tc)
+            info.sex   = 'Female';
+            info.group = 'Baseline';
+
+            sess = Session('Test001', 'chinchilla', 'Tester', info);
+
+            params.measure_type = 'ABR';
+            params.ear          = 'right';
+            data.epochs         = randn(10, 100);
+            data.fs             = 48828.125;
+
+            filepath = sess.saveRun(params, data);
+            loaded   = load(filepath);
+
+            tc.verifyEqual(loaded.run.info.sex,   'Female');
+            tc.verifyEqual(loaded.run.info.group, 'Baseline');
         end
 
         %% --- Calibration ---

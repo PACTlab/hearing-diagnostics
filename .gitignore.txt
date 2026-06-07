@@ -1,0 +1,23 @@
+# Data — never commit subject data
+data/
+
+# Project index files — derived from data, not source
+projects/*/index/
+
+# Test artifacts
+tests/tmp/
+
+# Config backup files created during tests
+config/system_config_backup.mat
+
+# MATLAB generated files
+*.asv          # autosave files
+*.m~           # backup files
+*.mlapp~       # App Designer backups
+
+# TDT circuit compiled files (keep .rcx.bak if generated)
+hardware/circuits/*.rcx.bak
+
+# OS files
+.DS_Store
+Thumbs.db

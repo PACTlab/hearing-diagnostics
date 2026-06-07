@@ -5,6 +5,9 @@ function params = abr_default_params()
 
 params.measure_type       = 'ABR';
 
+% Ear 
+params.ear = 'right'; 
+
 % Stimulus type
 params.stim_type          = 'toneburst';   % 'toneburst', 'click', 'chirp'
 
@@ -15,11 +18,14 @@ params.ear_cal_file = '';
 
 % Tone burst parameters (ignored if click or chirp)
 params.frequency_hz       = 1000;
-params.duration_ms        = 5;
-params.rise_fall_ms       = 0.5;
+params.duration_cyc        = 1;
+params.rise_fall_cyc       = 2;
+params.window_type         = 'blackman'; 
 
 % Click parameters (ignored if toneburst or chirp)
-params.click_duration_us  = 100;           % microseconds
+params.click_duration_us  = 103;           % microseconds (5 samples at 48.828125 Hz)
+params.filtclick = 1; % or 0 for no filter, if 1, then use click_filter below
+params.click_filter = [3000, 8000]; % passband;
 
 % Chirp parameters
 params.chirp_file         = '';            % path to .wav if loaded externally
@@ -30,21 +36,23 @@ params.polarity           = 'alt'; % 'alt', 'cond', 'rare'
 
 % Presentation
 params.rate_hz            = 11.1;          % per second
-params.jitter_pct         = 10;            % +/- % of ISI jittered
+params.jitter_pct         = 1;            % +/- % of ISI jittered
 params.n_reps             = 512;           % per polarity per level
 
 % Acquisition
-params.epoch_window_ms    = [0 20];
+params.rec_window_ms    = [0 20];          % window in ms that is saved
 params.fs                 = 48828.125;     % TDT standard
 
 % Recording
 params.n_channels         = 1;            % 1 = ABR only, 2 = ABR + ECochG
 params.gain               = 10000;        % electrode to AD gain
+params.stim_delay_ms      = 1;           % put the stim a little bit in from the beginning
 
 % Artifact rejection — placeholder
 params.artifact_reject    = false;
-params.artifact_thresh_v  = 0.04;         % volts at electrode, ignored if above is false
+params.artifact_thresh_uv  = 40;         % volts at electrode, ignored if above is false
 
 % Display
 params.memory_reps        = 0;            % 0 = cumulative average, N = sliding window
-params.fixed_phase        = false;
+params.viz_window_ms    = [0 20];          % window for visualization
+params.amplitude_window_uV = [-2 2]; 
