@@ -10,7 +10,7 @@ function [f1,RP,FS]=load_play_circuit(FS_tag,fig_num,USB_ch,Noise_Amp,IAC)
 %------------
 warning('off'); 
 
-CIR_PATH='BasicPlayOnly.rcx'; %The *.rco circuit used to play the files
+CIR_PATH='./circuits/BasicPlayRecord.rcx'; %The *.rco circuit used to play the files
 
 %Generate the actx control window in a specified figure:
 %-------------------------------------------------------

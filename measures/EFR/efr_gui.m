@@ -1,13 +1,13 @@
-function abr_gui()
-% ABR_GUI  Main ABR data collection window.
+function efr_gui()
+% EFR_GUI  Main EFR data collection window.
 % Launches session selection first, then opens main acquisition window.
 
-%% --- To Do -- 
-% Handle calibration 
+%% --- To Do --
+% Handle calibration
 warning('off', 'Session:noTransducerCal');
 
 %% --- Session ---
-% Lets you create (or reload) the session file to save everything to 
+% Lets you create (or reload) the session file to save everything to
 
 [save_dir, metadata] = session_load_or_create();
 if isempty(save_dir)
@@ -24,7 +24,7 @@ if ~isempty(cfg.calibration.active_transducer_file)
     try
         transducer_cal = cal_load_transducer(cfg.calibration.active_transducer_file);
     catch e
-        warning('abr_gui:calLoadFailed', ...
+        warning('efr_gui:calLoadFailed', ...
             'Could not load transducer cal: %s', e.message);
     end
 end
@@ -35,8 +35,8 @@ ear_cal = [];
 %% --- Default params ---
 % if lab_default project, use the params in this folder, otherwise, use the
 % params in the project folder. If no params in the project folder, use
-% lab_defaults. 
-params = project_load_defaults('abr', metadata.project);
+% lab_defaults.
+params = project_load_defaults('efr', metadata.project);
 
 %% --- State ---
 
@@ -47,7 +47,7 @@ prevAxes       = {};
 %% --- Main figure ---
 
 fig = uifigure(...
-    'Name',            sprintf('ABR — %s', metadata.subject_id), ...
+    'Name',            sprintf('EFR — %s', metadata.subject_id), ...
     'Position',        [50 50 1200 750], ...
     'CloseRequestFcn', @(~,~) onCloseRequest());
 
@@ -138,7 +138,7 @@ settingsBtn = uibutton(btnGrid, 'Text', 'Settings', ...
 settingsBtn.Layout.Row    = 1;
 settingsBtn.Layout.Column = 2;
 
-quitBtn = uibutton(btnGrid, 'Text', 'Quit ABR', ...
+quitBtn = uibutton(btnGrid, 'Text', 'Quit EFR', ...
     'FontColor',       [0.8 0.1 0.1], ...
     'ButtonPushedFcn', @(~,~) onCloseRequest());
 quitBtn.Layout.Row    = 1;
@@ -156,23 +156,24 @@ ctrlPanel.Layout.Column = 1;
 
 ctrlGrid = uigridlayout(ctrlPanel, [2 12]);
 ctrlGrid.RowHeight       = {'1x', 24};
-ctrlGrid.ColumnWidth     = {'1x','1x','1x','1x','2x','1x','1x','1x','1x','1x',80,80};
+ctrlGrid.ColumnWidth     = {'1x', '3x', '1x','1x','2x','1x','1x','1x','1x','1x',80,80};
 ctrlGrid.Padding         = [10 8 10 6];
 ctrlGrid.RowSpacing      = 4;
 ctrlGrid.ColumnSpacing   = 8;
 ctrlGrid.BackgroundColor = 'w';
 
 % Parameter fields
-stimTypeDrop = makeField(ctrlGrid, 'Stimulus',              1, 1,  'drop', {'Tone burst','Click','Chirp'});
-freqField    = makeField(ctrlGrid, 'Frequency (Hz)',        1, 2,  'edit', num2str(params.frequency_hz));
+stimTypeDrop = makeField(ctrlGrid, 'Stimulus Type',              1, 1,  'drop', {'WAV','SAM','RAM'});
+stimFile    = makeField(ctrlGrid, 'Wav File', 1, 2, 'drop', {params.wav_file})
+%freqField    = makeField(ctrlGrid, 'Frequency (Hz)',        1, 2,  'edit', num2str(params.carrier_frequency_hz));
 earDrop      = makeField(ctrlGrid, 'Ear',                  1, 3,  'drop', {'Right','Left'});
 polarityDrop = makeField(ctrlGrid, 'Polarity',             1, 4,  'drop', {'Alt','Cond','Rare'});
 levelsField  = makeField(ctrlGrid, 'Level series (dB SPL)',1, 5,  'edit', ...
     strjoin(arrayfun(@num2str, params.levels_dbspl, 'UniformOutput', false), ', '));
 repsField    = makeField(ctrlGrid, 'Reps (per pol)',       1, 6,  'edit', num2str(params.n_reps));
-rateField    = makeField(ctrlGrid, 'Rate (Hz)',            1, 7,  'edit', num2str(params.rate_hz));
-durField     = makeField(ctrlGrid, 'Dur (cyc)',             1, 8,  'edit', num2str(params.duration_cyc));
-riseField    = makeField(ctrlGrid, 'Rise (cyc)',            1, 9,  'edit', num2str(params.rise_fall_cyc));
+%rateField    = makeField(ctrlGrid, 'ISI (Hz)',            1, 7,  'edit', num2str(params.isi_ms));
+%durField     = makeField(ctrlGrid, 'Dur (cyc)',             1, 8,  'edit', num2str(params.duration_cyc));
+%riseField    = makeField(ctrlGrid, 'Rise (cyc)',            1, 9,  'edit', num2str(params.rise_fall_cyc));
 earCalDrop   = makeField(ctrlGrid, 'Ear cal',              1, 10, 'drop', {'Session','None','File...'});
 
 runBtn = uibutton(ctrlGrid, ...
@@ -204,7 +205,7 @@ statusBar.Layout.Column = [1 8];
 
 % Params file bar
 paramsBar = uilabel(ctrlGrid, ...
-    'Text',      sprintf('Starting Params: %s', metadata.project), ...
+    'Text',      sprintf('Parameters from: %s', metadata.project), ...
     'FontSize',  11, ...
     'FontColor', [0.4 0.4 0.4], ...
     'HorizontalAlignment', 'right');
@@ -227,7 +228,7 @@ leftGrid = uigridlayout(plotGrid, [2 2]);
 leftGrid.Layout.Row    = 1;
 leftGrid.Layout.Column = 1;
 leftGrid.RowHeight     = {'1x', 120};
-leftGrid.ColumnWidth = {400, '1x'}; 
+leftGrid.ColumnWidth = {400, '1x'};
 leftGrid.RowSpacing    = 6;
 leftGrid.Padding       = [0 0 0 0];
 
@@ -256,8 +257,6 @@ hold(waveAx, 'on');
 
 avgLine  = plot(waveAx, NaN, NaN, ...
     'Color', [0.11 0.62 0.46], 'LineWidth', 1.8);
-prevLine = plot(waveAx, NaN, NaN, ...
-    'Color', [0.75 0.75 0.75], 'LineWidth', 1.0, 'LineStyle', '--');
 
 % Noise panel
 noisePanel = uipanel(leftGrid, ...
@@ -294,19 +293,20 @@ vizPanel.Layout.Column = 1;
 
 vizGrid = uigridlayout(vizPanel, [2 4]);
 vizGrid.ColumnWidth     = {'1x', '1x', '1x', '1x'};
-vizGrid.RowHeight       = {'1x', '1x'}; 
+vizGrid.RowHeight       = {'1x', '1x'};
 vizGrid.Padding         = [10 4 10 4];
 vizGrid.ColumnSpacing   = 50;
 vizGrid.BackgroundColor = 'w';
 
-viz1    = makeField(vizGrid, 'Gain',  1, 1,  'edit', num2str(params.rise_fall_cyc));
+% TODO: wire viz panel fields to update display
+viz1    = makeField(vizGrid, 'Gain',  1, 1,  'edit', num2str(params.rise_fall_ms));
 viz2    = makeField(vizGrid, 'Ear cal', 1, 2, 'drop', {'Session','None','File...'});
 viz3    = makeField(vizGrid, 'Start (ms)',  1, 3,  'edit', num2str(params.viz_window_ms(1)));
 viz4    = makeField(vizGrid, 'End (ms)',  1, 4,  'edit', num2str(params.viz_window_ms(2)));
-viz5    = makeField(vizGrid, 'Gain',  2, 1,  'edit', num2str(params.rise_fall_cyc));
-viz6    = makeField(vizGrid, 'Gain',  2, 2,  'edit', num2str(params.rise_fall_cyc));
-viz7    = makeField(vizGrid, 'Gain',  2, 3,  'edit', num2str(params.rise_fall_cyc));
-viz8    = makeField(vizGrid, 'Gain',  2, 4,  'edit', num2str(params.rise_fall_cyc));
+viz5    = makeField(vizGrid, 'Y scale (\muV)',  2, 1,  'edit', num2str(params.amplitude_window_uV(2)));
+viz6    = makeField(vizGrid, 'Gain',  2, 2,  'edit', num2str(params.rise_fall_ms));
+viz7    = makeField(vizGrid, 'Gain',  2, 3,  'edit', num2str(params.rise_fall_ms));
+viz8    = makeField(vizGrid, 'Gain',  2, 4,  'edit', num2str(params.rise_fall_ms));
 
 %% --- Right col: previous waveforms ---
 
@@ -335,9 +335,8 @@ xlabel(prevAx, 'Time (ms)');
 %% ================================================================
 
     function onRun()
-        params     = readParamsFromGui();
-
-        err        = abr_validate_params(params);
+        params = readParamsFromGui();
+        err    = efr_validate_params(params);
         if ~isempty(err)
             uialert(fig, err, 'Invalid parameters');
             return
@@ -345,119 +344,23 @@ xlabel(prevAx, 'Time (ms)');
 
         state.running  = true;
         state.stop_req = false;
-        last_avg = [];
         setRunning(true);
 
-        try % try the level and reps loops
+        % Build callbacks
+        callbacks.update_status   = @(msg)           updateStatus(msg);
+        callbacks.update_waveform = @(t, avg)        set(avgLine, 'XData', t, 'YData', avg);
+        callbacks.update_noise    = @(rms)           updateNoise(rms);
+        callbacks.add_prev        = @(t, avg, lv, f) addPrevWaveform(t, avg, lv, f);
+        callbacks.should_stop     = @()              state.stop_req;
+        callbacks.update_title = @(msg) setWaveTitle(msg);
 
-        epoch_samples = round(diff(params.rec_window_ms) / 1000 * params.fs);
-        t_epoch       = linspace(params.rec_window_ms(1), ...
-            params.rec_window_ms(2), epoch_samples);
 
-        %% Level loop
-        for lev_idx = 1:length(params.levels_dbspl)
-            if state.stop_req; break; end
-
-            this_level   = params.levels_dbspl(lev_idx);
-
-            % Before rep loop — generate stimulus for this level
-            params_this_level              = params;
-            params_this_level.levels_dbspl = this_level;
-            [stim_out, ~]          = abr_make_stimulus(params_this_level, transducer_cal);
-
-            % Ready to plot
-            running_sum  = zeros(epoch_samples, 1);
-            rep_accepted = 0;
-            n_rejected   = 0;
-
-            wavePanel.Title = sprintf('Running average — %d Hz, %d dB SPL', ...
-                params.frequency_hz, this_level);
-
-            updateStatus(sprintf('Level %d / %d — %d dB SPL — starting...', ...
-                lev_idx, length(params.levels_dbspl), this_level));
-
-            set(avgLine, 'XData', NaN, 'YData', NaN);
-            last_avg = [];
-
-            %% Rep loop
-            for rep = 1:params.n_reps
-                if state.stop_req; break; end
-
-                % Pick polarity
-                if mod(rep, 2) == 1
-                    play_buf = stim_out.pos;
-                else
-                    play_buf = stim_out.neg;
-                end
-
-                % STUB: replace with TDT calls
-                % invoke(RZ, 'SetTagVal', 'nsamps',    stim_out.isi_samples(rep));
-                % invoke(RZ, 'WriteTagVEX', 'datainL', 0, 'F32', play_buf(1:stim_out.isi_samples(rep))');
-                % invoke(RZ, 'SetTagVal',   'attA',    stim_out.atten_db);
-                % invoke(RZ, 'SoftTrg', 1);
-                % pause(stim_out.isi_samples(rep) / stim_out.fs + 0.005);
-                % epoch_raw = invoke(RZ, 'ReadTagVEX', 'epochbuf', 0, epoch_samples, 'F32', 'F64')';
-                epoch_raw = randn(epoch_samples, 1) * 0.3e-6;
-                pause(0.001);
-
-                % Artifact rejection
-                rejected = false;
-                if params.artifact_reject
-                    if max(abs(epoch_raw)) > params.artifact_thresh_v
-                        rejected   = true;
-                        n_rejected = n_rejected + 1;
-                    end
-                end
-
-                if ~rejected
-                    rep_accepted = rep_accepted + 1;
-                    running_sum  = running_sum + epoch_raw;
-                end
-
-                % Update display every 25 reps
-                if mod(rep, 25) == 0 && rep_accepted > 0
-                    current_avg = running_sum / rep_accepted;
-                    set(avgLine, 'XData', t_epoch, 'YData', current_avg * 1e6);
-                    noise_rms     = std(epoch_raw) * 1e6;
-                    noiseLbl.Text = sprintf('%.2f µV', noise_rms);
-                    updateStatus(sprintf(...
-                        'Level %d / %d — %d dB SPL — rep %d / %d  |  rejected: %d', ...
-                        lev_idx, length(params.levels_dbspl), ...
-                        this_level, rep, params.n_reps, n_rejected));
-                    drawnow;
-                end
-            end   % rep loop
-
-            % Save this level immediately
-            if rep_accepted > 0
-                final_avg = running_sum / rep_accepted;
-                last_avg  = final_avg;
-
-                % Build single-level params and data for saving
-                save_params               = params;
-                save_params.levels_dbspl  = this_level;
-
-                save_data.epochs   = [];    % placeholder until TDT wired
-                save_data.average  = final_avg;
-                save_data.fs       = params.fs;
-                save_data.n_reps_accepted = rep_accepted;
-                save_data.n_reps_rejected = n_rejected;
-
-                [~, metadata] = session_save_run(...
-                    save_dir, metadata, save_params, save_data);
-
-                addPrevWaveform(t_epoch, final_avg * 1e6, ...
-                    this_level, params.frequency_hz);
-            end
-
-        end   % level loop
-
+        try
+            metadata = efr_run(params, save_dir, metadata, [], transducer_cal, callbacks);
         catch e
-            % Always reset GUI state on error
             state.running = false;
             setRunning(false);
             wavePanel.Title = 'Running average';
-            updateStatus(sprintf('Error: %s', e.message));
             uialert(fig, e.message, 'Acquisition error');
             return
         end
@@ -468,7 +371,6 @@ xlabel(prevAx, 'Time (ms)');
         updateStatus(sprintf('Done. Total runs this session: %d', ...
             metadata.total_runs));
     end
-
     function onStop()
         state.stop_req = true;
         updateStatus('Stopping after this rep...');
@@ -483,6 +385,7 @@ xlabel(prevAx, 'Time (ms)');
     end
 
     function onCloseRequest()
+        % TODO: restore before deployment
         % if state.running
         %     uialert(fig, ...
         %         'Stop data collection before quitting.', ...
@@ -516,6 +419,9 @@ xlabel(prevAx, 'Time (ms)');
         p.duration_cyc  = str2double(durField.Value);
         p.rise_fall_cyc = str2double(riseField.Value);
 
+        % need to validate levels are a reasonable range and freq are
+        % doable
+
         switch earCalDrop.Value
             case 'None'
                 p.apply_ear_cal = false;
@@ -535,6 +441,14 @@ xlabel(prevAx, 'Time (ms)');
 
     function updateStatus(msg)
         statusBar.Text = msg;
+    end
+
+    function updateNoise(rms_uv)
+        noiseLbl.Text = sprintf('%.2f µV', rms_uv);
+    end
+
+    function setWaveTitle(msg)
+        wavePanel.Title = msg;
     end
 
     function setRunning(tf)
@@ -560,7 +474,7 @@ xlabel(prevAx, 'Time (ms)');
         hold(prevAx, 'on');
         for i = 1:n
             offset = (n - i) * 6;
-            x_offset = length(t)-floor((length(t)/4)); 
+            x_offset = length(t)-floor((length(t)/4));
             plot(prevAx, prevAxes{i}.t, prevAxes{i}.avg + offset, ...
                 'Color', [0.22 0.54 0.85], 'LineWidth', 1);
             text(prevAx, t(x_offset) + 0.2, offset+.5, ...
@@ -573,91 +487,91 @@ xlabel(prevAx, 'Time (ms)');
         drawnow;
     end
 
-end   % abr_gui
+end   % efr_gui
 
 %% ================================================================
 %  LOCAL FUNCTIONS
 %% ================================================================
 
 function makeInfoChip(parent, labelStr, valueStr, col)
-    p = uipanel(parent, 'BorderType', 'none', 'BackgroundColor', 'w');
-    p.Layout.Row    = 1;
-    p.Layout.Column = col;
-    g = uigridlayout(p, [2 1]);
-    g.RowHeight       = {'1x', '1x'};
-    g.Padding         = [0 2 0 2];
-    g.RowSpacing      = 0;
-    g.BackgroundColor = 'w';
-    lbl = uilabel(g, 'Text', labelStr, 'FontSize', 9, ...
-        'FontColor', [0.55 0.55 0.55]);
-    lbl.Layout.Row    = 1;
-    lbl.Layout.Column = 1;
-    val = uilabel(g, 'Text', valueStr, 'FontSize', 12, 'FontWeight', 'bold');
-    val.Layout.Row    = 2;
-    val.Layout.Column = 1;
+p = uipanel(parent, 'BorderType', 'none', 'BackgroundColor', 'w');
+p.Layout.Row    = 1;
+p.Layout.Column = col;
+g = uigridlayout(p, [2 1]);
+g.RowHeight       = {'1x', '1x'};
+g.Padding         = [0 2 0 2];
+g.RowSpacing      = 0;
+g.BackgroundColor = 'w';
+lbl = uilabel(g, 'Text', labelStr, 'FontSize', 9, ...
+    'FontColor', [0.55 0.55 0.55]);
+lbl.Layout.Row    = 1;
+lbl.Layout.Column = 1;
+val = uilabel(g, 'Text', valueStr, 'FontSize', 12, 'FontWeight', 'bold');
+val.Layout.Row    = 2;
+val.Layout.Column = 1;
 end
 
 function field = makeField(parent, labelStr, row, col, type, default)
-    p = uipanel(parent, 'BorderType', 'none', 'BackgroundColor', 'w');
-    p.Layout.Row    = row;
-    p.Layout.Column = col;
-    g = uigridlayout(p, [2 1]);
-    g.RowHeight       = {16, '1x'};
-    g.Padding         = [0 0 0 0];
-    g.RowSpacing      = 2;
-    g.BackgroundColor = 'w';
-    lbl = uilabel(g, 'Text', labelStr, 'FontSize', 10, ...
-        'FontColor', [0.45 0.45 0.45]);
-    lbl.Layout.Row    = 1;
-    lbl.Layout.Column = 1;
-    switch type
-        case 'edit'
-            field = uieditfield(g, 'text', 'Value', default);
-        case 'drop'
-            field = uidropdown(g, 'Items', default);
-    end
-    field.Layout.Row    = 2;
-    field.Layout.Column = 1;
+p = uipanel(parent, 'BorderType', 'none', 'BackgroundColor', 'w');
+p.Layout.Row    = row;
+p.Layout.Column = col;
+g = uigridlayout(p, [2 1]);
+g.RowHeight       = {16, '1x'};
+g.Padding         = [0 0 0 0];
+g.RowSpacing      = 2;
+g.BackgroundColor = 'w';
+lbl = uilabel(g, 'Text', labelStr, 'FontSize', 10, ...
+    'FontColor', [0.45 0.45 0.45]);
+lbl.Layout.Row    = 1;
+lbl.Layout.Column = 1;
+switch type
+    case 'edit'
+        field = uieditfield(g, 'text', 'Value', default);
+    case 'drop'
+        field = uidropdown(g, 'Items', default);
+end
+field.Layout.Row    = 2;
+field.Layout.Column = 1;
 end
 
 function makeNoiseChip(parent, labelStr, valueStr, col)
-    p = uipanel(parent, 'BorderType', 'none', 'BackgroundColor', 'w');
-    p.Layout.Row    = 1;
-    p.Layout.Column = col;
-    g = uigridlayout(p, [2 1]);
-    g.RowHeight       = {'1x', '1x'};
-    g.Padding         = [0 0 0 0];
-    g.RowSpacing      = 2;
-    g.BackgroundColor = 'w';
-    lbl = uilabel(g, 'Text', labelStr, 'FontSize', 9, ...
-        'FontColor', [0.55 0.55 0.55]);
-    lbl.Layout.Row    = 1;
-    lbl.Layout.Column = 1;
-    val = uilabel(g, 'Text', valueStr, 'FontSize', 13, 'FontWeight', 'bold');
-    val.Layout.Row    = 2;
-    val.Layout.Column = 1;
+p = uipanel(parent, 'BorderType', 'none', 'BackgroundColor', 'w');
+p.Layout.Row    = 1;
+p.Layout.Column = col;
+g = uigridlayout(p, [2 1]);
+g.RowHeight       = {'1x', '1x'};
+g.Padding         = [0 0 0 0];
+g.RowSpacing      = 2;
+g.BackgroundColor = 'w';
+lbl = uilabel(g, 'Text', labelStr, 'FontSize', 9, ...
+    'FontColor', [0.55 0.55 0.55]);
+lbl.Layout.Row    = 1;
+lbl.Layout.Column = 1;
+val = uilabel(g, 'Text', valueStr, 'FontSize', 13, 'FontWeight', 'bold');
+val.Layout.Row    = 2;
+val.Layout.Column = 1;
 end
 
 function txt = calBadgeText(name, cal)
-    if isempty(cal)
-        txt = sprintf('%s — none', name);
-    else
-        txt = sprintf('%s ✓', name);
-    end
+if isempty(cal)
+    txt = sprintf('%s — none', name);
+else
+    txt = sprintf('%s ✓', name);
+end
 end
 
 function c = calBadgeColor(cal)
-    if isempty(cal)
-        c = [1.0 0.95 0.88];
-    else
-        c = [0.88 0.96 0.93];
-    end
+if isempty(cal)
+    c = [1.0 0.95 0.88];
+else
+    c = [0.88 0.96 0.93];
+end
 end
 
 function c = calBadgeFontColor(cal)
-    if isempty(cal)
-        c = [0.52 0.31 0.05];
-    else
-        c = [0.07 0.39 0.28];
-    end
+if isempty(cal)
+    c = [0.52 0.31 0.05];
+else
+    c = [0.07 0.39 0.28];
+end
 end
