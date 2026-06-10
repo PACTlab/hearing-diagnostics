@@ -14,15 +14,15 @@ if isempty(save_dir)
     return
 end
 
+%% --- Load the General Config --- 
+cfg = config_load();
 
 %% --- Connect with TDT
 
-tdt = tdt_init(); 
-tdt = []; 
+tdt = tdt_init(cfg, 'abr'); 
+%tdt = []; 
 
 %% --- Load calibration ---
-
-cfg = config_load();
 
 % Load transducer cal if configured
 transducer_cal = [];
@@ -361,8 +361,9 @@ xlabel(prevAx, 'Time (ms)');
 
 
         try
-            metadata = abr_run(params, save_dir, metadata, [], transducer_cal, callbacks);
+            metadata = abr_run(params, save_dir, metadata, tdt, transducer_cal, callbacks);
         catch e
+            tdt_close(tdt); 
             state.running = false;
             setRunning(false);
             wavePanel.Title = 'Running average';
@@ -406,6 +407,7 @@ xlabel(prevAx, 'Time (ms)');
             'CancelOption',  2);
         if strcmp(sel, 'Quit')
             delete(fig);
+            tdt_close(tdt); 
         end
     end
 

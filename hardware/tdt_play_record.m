@@ -1,4 +1,4 @@
-function data = tdt_play_record(tdt, stim_ch1, stim_ch2, att_ch1, att_ch2, resplength, Nreps, throwAway, delayComp)
+function data = tdt_play_record(tdt, stim_ch1, stim_ch2, att_ch1, att_ch2, Nreps, throwAway, delayComp)
 % TDT_PLAY_RECORD  Play one stimulus and record one epoch.
 %   epoch = tdt_play_record(tdt, stim_ch1, stim_ch2, att_ch1, att_ch2,
 %   Nreps, delayComp)
@@ -9,7 +9,6 @@ function data = tdt_play_record(tdt, stim_ch1, stim_ch2, att_ch1, att_ch2, respl
 %   stim_ch2     - [n x 1] stimulus for right channel (can be zeros)
 %   att_ch1      - analog attenuation to use on channel 1
 %   att_ch2      - analog attenuation to use on channel 2
-%   resplength   - length to record, if empty, then default to stim + delay
 %   Nreps        - Number of repetitions of the stimulus
 %   delayComp    - T/F to add the delay
 %
@@ -34,19 +33,17 @@ else
     delay = 0;
 end
 
-if ~exist('resplength', 'var')
-    n_samps = max(numel(stim_ch1), numel(stim_ch2)) + delay; % How many samples to read from OAE buffer
-else
-    n_samps = resplength + delay; 
-end
+
+n_samps = max(numel(stim_ch1), numel(stim_ch1)) + delay; 
+
 
 % Write stimulus to circuit buffers
 invoke(tdt.RZ, 'WriteTagVEX', 'datainL', 0, 'F32', stim_ch1(:)');
 invoke(tdt.RZ, 'WriteTagVEX', 'datainR', 0, 'F32', stim_ch2(:)');
 
 % Set attenuation
-invoke(tdt.RZ, 'SetTagVal', 'attA', atten_db);
-invoke(tdt.RZ, 'SetTagVal', 'attB', atten_db);
+invoke(tdt.RZ, 'SetTagVal', 'attA', att_ch1);
+invoke(tdt.RZ, 'SetTagVal', 'attB', att_ch2);
 
 % Set stimulus length
 invoke(tdt.RZ, 'SetTagVal', 'nsamps', n_samps);
@@ -64,7 +61,7 @@ for n = 1:(Nreps + throwAway)
     currindex = invoke(tdt.RZ, 'GetTagVal', 'indexin');
 
     while(currindex < n_samps)
-        currindex=invoke(card.RZ, 'GetTagVal', 'indexin');
+        currindex=invoke(tdt.RZ, 'GetTagVal', 'indexin');
     end
 
     % Read epoch back from circuit

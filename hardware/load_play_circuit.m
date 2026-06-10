@@ -1,6 +1,6 @@
 
 %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
-function [f1,RP,FS]=load_play_circuit(FS_tag,fig_num,USB_ch,Noise_Amp,IAC)
+function [f1,RP,FS]=load_play_circuit(config, measure_type, FS_tag,fig_num,USB_ch,Noise_Amp,IAC)
 % Loads the TDT circuit and makes actx links necessay
 % Legacy code from KC. The TDT matlab syntax has now changed to look more
 % like OOPS but this old style is still supported.
@@ -9,9 +9,12 @@ function [f1,RP,FS]=load_play_circuit(FS_tag,fig_num,USB_ch,Noise_Amp,IAC)
 % Hari Bharadwaj, September 6, 2010
 %------------
 warning('off'); 
-
-CIR_PATH='./circuits/BasicPlayRecord.rcx'; %The *.rco circuit used to play the files
-
+switch measure_type
+    case 'abr'
+       CIR_PATH=[config.hardware.circuit_dir, 'BasicPlayRecord_Medusa.rcx']; %The *.rco circuit used to play the files
+    otherwise 
+        CIR_PATH=[config.hardware.circuit_dir, 'BasicPlayRecord.rcx']; %The *.rco circuit used to play the files
+end
 %Generate the actx control window in a specified figure:
 %-------------------------------------------------------
 f1=figure(fig_num);

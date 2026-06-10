@@ -23,11 +23,12 @@ fprintf('USB channel:              %d\n',   config.hardware.usb_ch);
 fprintf('Figure number:            %d\n',   config.hardware.fig_num);
 fprintf('N channels:               %d\n',   config.hardware.n_channels);
 fprintf('Gain:                     %d\n',   config.hardware.gain);
+fprintf('Circuit Folder:           %s\n',   config.hardware.circuit_dir); 
 fprintf('Active transducer cal:    %s\n',   config.calibration.active_transducer_file);
 fprintf('Active FPL cal:           %s\n',   config.calibration.active_fpl_file);
 fprintf('Cal max age (days):       %d\n',   config.calibration.max_age_days);
 fprintf('Data root directory:      %s\n',   config.data.root_dir);
-fprinf('Last Session:              %s\n',   config.last_session_dir); 
+fprintf('Last Session:              %s\n',   config.last_session_dir); 
 fprintf('\n');
 
 %% --- Edit values here ---
@@ -42,12 +43,13 @@ fprintf('\n');
 % config.hardware.fig_num                       = 99;
 % config.hardware.n_channels                    = 1;
 % config.hardware.gain                          = 10000;
+%config.hardware.circuit_dir                     = 'C:\Users\TDT\Desktop\Code\hearing-diagnostics\hardware\circuits\'
 
 % config.calibration.active_transducer_file     = 'calibration/data/transducer/MY_CAL.mat';
 % config.calibration.active_fpl_file            = '';
 % config.calibration.max_age_days               = 7;
 
-% config.data.root_dir                          = 'data';
+% config.data.root_dir                          = 'C:\Users\TDT\Desktop\Code\hearing-diagnostics\data\';
 % config.last_session_dir                       = ''; 
 
 %% --- Save if any changes were made ---

@@ -64,7 +64,8 @@ for lev_idx = 1:length(params.levels_dbspl)
     [stim_out, stim_info] = abr_make_stimulus(params_this_level, cal);
 
     %% --- Initialize accumulators ---
-    running_sum  = zeros(epoch_samples, 1);
+    running_sum  = zeros(1, epoch_samples);
+    epochs = zeros(params.n_reps, epoch_samples); 
     rep_accepted = 0;
     n_rejected   = 0;
     last_avg     = [];
@@ -85,26 +86,46 @@ for lev_idx = 1:length(params.levels_dbspl)
 
         %% --- Pick polarity ---
         if mod(rep, 2) == 1
-            play_buf = stim_out.pos;
+            play_buff = stim_out.pos;
         else
-            play_buf = stim_out.neg;
+            play_buff = stim_out.neg;
         end
 
+        %% --- Pick Ear --- 
+        if strcmp(params_this_level.ear, 'left')
+            stim_ch1 = play_buff;
+            stim_ch2 = zeros(size(play_buff));
+        elseif strcmp(params_this_level.ear, 'right')
+            stim_ch1 = zeros(size(play_buff));
+            stim_ch2 = play_buff;
+        else
+            stim_ch1 = play_buff;
+            stim_ch2 = play_buff;
+        end
+
+        stim_ch1 = stim_ch1(1:stim_out.isi_samples); 
+        stim_ch2 = stim_ch2(1:stim_out.isi_samples); 
+
+        %% --- Set attns ---
+            att_ch1 = 30; 
+            att_ch2 = 30; %% hardcoded now should take into account transducer
+
+        %% --- Set other info for tdt play and record
+        Nreps = 1; 
+        throwAway = 0; 
+        delayComp = 0; 
         %% --- Play and record ---
         if stub_mode
             epoch_raw = randn(epoch_samples, 1) * 0.3e-6;
             pause(0.001);
         else
-            invoke(tdt.RZ, 'SetTagVal',   'nsamps', stim_out.isi_samples(rep));
-            invoke(tdt.RZ, 'WriteTagVEX', 'datainL', 0, 'F32', ...
-                play_buf(1:stim_out.isi_samples(rep))');
-            invoke(tdt.RZ, 'SetTagVal',   'attA', stim_out.atten_db);
-            invoke(tdt.RZ, 'SetTagVal',   'attB', stim_out.atten_db);
-            invoke(tdt.RZ, 'SoftTrg', 1);
-            pause(stim_out.isi_samples(rep) / params.fs + 0.005);
-            epoch_raw = invoke(tdt.RZ, 'ReadTagVEX', 'epochbuf', 0, ...
-                epoch_samples, 'F32', 'F64')';
+            epoch_raw = tdt_play_record(tdt, stim_ch1, stim_ch2, att_ch1, att_ch2, Nreps, throwAway, delayComp);
+            epoch = epoch_raw(1, 1:epoch_samples); 
         end
+
+        %% --- Save all raw epochs --- 
+
+        epochs(rep, :) = epoch; 
 
         %% --- Artifact rejection ---
         rejected = false;
@@ -118,12 +139,13 @@ for lev_idx = 1:length(params.levels_dbspl)
         %% --- Accumulate ---
         if ~rejected
             rep_accepted = rep_accepted + 1;
-            running_sum  = running_sum + epoch_raw;
+            running_sum  = running_sum + epoch_raw(1, 1:epoch_samples);
         end
 
         %% --- Update display every 25 reps ---
-        if mod(rep, 25) == 0 && rep_accepted > 0 && has_callbacks
+        if mod(rep, 10) == 0 && rep_accepted > 0 && has_callbacks
             current_avg = running_sum / rep_accepted;
+            current_avg = current_avg - mean(current_avg); 
             callbacks.update_waveform(t_epoch, current_avg * 1e6);
             callbacks.update_noise(std(epoch_raw) * 1e6);
             notify(sprintf(...
@@ -143,7 +165,7 @@ for lev_idx = 1:length(params.levels_dbspl)
         save_params              = params;
         save_params.levels_dbspl = this_level;
 
-        save_data.epochs            = [];
+        save_data.epochs            = epochs;
         save_data.average           = final_avg;
         save_data.fs                = params.fs;
         save_data.n_reps_accepted   = rep_accepted;
