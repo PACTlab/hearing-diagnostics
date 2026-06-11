@@ -64,9 +64,13 @@ for lev_idx = 1:length(params.levels_dbspl)
     [stim_out, stim_info] = abr_make_stimulus(params_this_level, cal);
 
     %% --- Initialize accumulators ---
-    running_sum  = zeros(1, epoch_samples);
+    running_sum_combined  = zeros(1, epoch_samples);
+    running_sum_pos = zeros(1, epoch_samples); 
+    running_sum_neg = zeros(1, epoch_samples); 
     epochs = zeros(params.n_reps, epoch_samples); 
     rep_accepted = 0;
+    rep_accepted_pos     = 0;
+    rep_accepted_neg     = 0;
     n_rejected   = 0;
     last_avg     = [];
 
@@ -103,8 +107,8 @@ for lev_idx = 1:length(params.levels_dbspl)
             stim_ch2 = play_buff;
         end
 
-        stim_ch1 = stim_ch1(1:stim_out.isi_samples); 
-        stim_ch2 = stim_ch2(1:stim_out.isi_samples); 
+        stim_ch1 = stim_ch1(1:stim_out.isi_samples(rep)); 
+        stim_ch2 = stim_ch2(1:stim_out.isi_samples(rep)); 
 
         %% --- Set attns ---
             att_ch1 = 30; 
@@ -116,8 +120,21 @@ for lev_idx = 1:length(params.levels_dbspl)
         delayComp = 0; 
         %% --- Play and record ---
         if stub_mode
-            epoch_raw = randn(epoch_samples, 1) * 0.3e-6;
+            % Display the stimulus so you can verify waveform shape,
+            % polarity, and level before connecting hardware.
+            % Resample stimulus to epoch length if needed.
+            stim_portion = play_buff(1:stim_out.n_stim);
+
+            if length(stim_portion) >= epoch_samples
+                epoch_raw = stim_portion(1:epoch_samples) * 0.1e-6;
+            else
+                % Pad with low-level noise after stimulus ends
+                epoch_raw = zeros(1, epoch_samples);
+                epoch_raw(1:length(stim_portion)) = stim_portion * 0.1e-6;
+                epoch_raw = epoch_raw + randn(1, epoch_samples) * 0.02e-6;
+            end
             pause(0.001);
+            epoch = epoch_raw(1,1:epoch_samples); 
         else
             epoch_raw = tdt_play_record(tdt, stim_ch1, stim_ch2, att_ch1, att_ch2, Nreps, throwAway, delayComp);
             epoch = epoch_raw(1, 1:epoch_samples); 
@@ -137,17 +154,37 @@ for lev_idx = 1:length(params.levels_dbspl)
         end
 
         %% --- Accumulate ---
+
         if ~rejected
             rep_accepted = rep_accepted + 1;
-            running_sum  = running_sum + epoch_raw(1, 1:epoch_samples);
+            running_sum_combined = running_sum_combined + epoch_raw(1, 1:epoch_samples);
+
+            % Track polarity separately for display
+            if mod(rep, 2) == 1
+                rep_accepted_pos     = rep_accepted_pos + 1;
+                running_sum_pos      = running_sum_pos + epoch_raw(1, 1:epoch_samples);
+            else
+                rep_accepted_neg     = rep_accepted_neg + 1;
+                running_sum_neg      = running_sum_neg + epoch_raw(1, 1:epoch_samples);
+            end
         end
 
         %% --- Update display every 25 reps ---
         if mod(rep, 10) == 0 && rep_accepted > 0 && has_callbacks
-            current_avg = running_sum / rep_accepted;
-            current_avg = current_avg - mean(current_avg); 
-            callbacks.update_waveform(t_epoch, current_avg * 1e6);
-            callbacks.update_noise(std(epoch_raw) * 1e6);
+            avg_combined = running_sum_combined / rep_accepted;
+
+            avg_pos = zeros(1, epoch_samples);
+            avg_neg = zeros(1, epoch_samples);
+            if rep_accepted_pos > 0
+                avg_pos = running_sum_pos / rep_accepted_pos;
+            end
+            if rep_accepted_neg > 0
+                avg_neg = running_sum_neg / rep_accepted_neg;
+            end
+
+            callbacks.update_waveform(t_epoch, ...
+                avg_combined * 1e6, avg_pos * 1e6, avg_neg * 1e6);
+            callbacks.update_noise(std(epochs(1:rep_accepted,:)) * 1e6);
             notify(sprintf(...
                 'Level %d / %d — %d dB SPL — rep %d / %d  |  rejected: %d', ...
                 lev_idx, length(params.levels_dbspl), ...
@@ -159,16 +196,21 @@ for lev_idx = 1:length(params.levels_dbspl)
 
     %% --- Save this level ---
     if rep_accepted > 0
-        final_avg = running_sum / rep_accepted;
+        final_avg = running_sum_combined / rep_accepted;
         last_avg  = final_avg;
 
         save_params              = params;
         save_params.levels_dbspl = this_level;
 
+        save_data.t_ms              = t_epoch; 
         save_data.epochs            = epochs;
         save_data.average           = final_avg;
+        save_data.average_pos      = running_sum_pos / max(rep_accepted_pos, 1);
+        save_data.average_neg      = running_sum_neg / max(rep_accepted_neg, 1);
         save_data.fs                = params.fs;
         save_data.n_reps_accepted   = rep_accepted;
+        save_data.n_reps_pos       = rep_accepted_pos;
+        save_data.n_reps_neg       = rep_accepted_neg;
         save_data.n_reps_rejected   = n_rejected;
         save_data.stim_info         = stim_info;
 

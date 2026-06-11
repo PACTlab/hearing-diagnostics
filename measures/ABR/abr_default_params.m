@@ -56,3 +56,7 @@ params.artifact_thresh_uv  = 40;         % volts at electrode, ignored if above 
 params.memory_reps        = 0;            % 0 = cumulative average, N = sliding window
 params.viz_window_ms    = [0 20];          % window for visualization
 params.amplitude_window_uV = [-2 2]; 
+params.viz_polarity = 'Separated';
+
+% testing mode
+params.stub_mode = false;   % set to true for testing without hardware
