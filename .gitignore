@@ -6,6 +6,16 @@ data/*
 projects/*/index/*
 !projects/*/index/.gitkeep
 
+# Calibration data — never commit subject or lab calibration files
+calibration/data/transducer/
+calibration/data/probe_checks/records/
+calibration/data/probe_checks/references/
+
+# Keep folder structure but not contents
+!calibration/data/transducer/.gitkeep
+!calibration/data/probe_checks/records/.gitkeep
+!calibration/data/probe_checks/references/.gitkeep
+
 # Test artifacts
 tests/tmp/
 
