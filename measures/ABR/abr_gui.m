@@ -44,6 +44,8 @@ ear_cal = [];
 % lab_defaults.
 params = project_load_defaults('abr', metadata.project);
 
+default_levels_str = strjoin(arrayfun(@num2str, params.levels_dbspl, ...
+    'UniformOutput', false), ', ');
 %% --- State ---
 
 state.running  = false;
@@ -178,9 +180,9 @@ ctrlPanel = uipanel(mainGrid, ...
 ctrlPanel.Layout.Row    = 2;
 ctrlPanel.Layout.Column = 1;
 
-ctrlGrid = uigridlayout(ctrlPanel, [2 12]);
+ctrlGrid = uigridlayout(ctrlPanel, [2 13]);
 ctrlGrid.RowHeight       = {'1x', 24};
-ctrlGrid.ColumnWidth     = {'1x','1x','1x','1x','2x','1x','1x','1x','1x','1x',80,80};
+ctrlGrid.ColumnWidth = {'1x','1x','1x','1x','2x',30,'1x','1x','1x','1x',80,80};
 ctrlGrid.Padding         = [10 8 10 6];
 ctrlGrid.RowSpacing      = 4;
 ctrlGrid.ColumnSpacing   = 8;
@@ -193,11 +195,34 @@ earDrop      = makeField(ctrlGrid, 'Ear',                  1, 3,  'drop', {'Righ
 polarityDrop = makeField(ctrlGrid, 'Polarity',             1, 4,  'drop', {'Alt','Cond','Rare'});
 levelsField  = makeField(ctrlGrid, 'Level series (dB SPL)',1, 5,  'edit', ...
     strjoin(arrayfun(@num2str, params.levels_dbspl, 'UniformOutput', false), ', '));
-repsField    = makeField(ctrlGrid, 'Reps (per pol)',       1, 6,  'edit', num2str(params.n_reps));
-rateField    = makeField(ctrlGrid, 'Rate (Hz)',            1, 7,  'edit', num2str(params.rate_hz));
-durField     = makeField(ctrlGrid, 'Dur (cyc)',             1, 8,  'edit', num2str(params.duration_cyc));
-riseField    = makeField(ctrlGrid, 'Rise (cyc)',            1, 9,  'edit', num2str(params.rise_fall_cyc));
-earCalDrop   = makeField(ctrlGrid, 'Ear cal',              1, 10, 'drop', {'Session','None','File...'});
+
+repsField    = makeField(ctrlGrid, 'Reps (per pol)',       1, 7,  'edit', num2str(params.n_reps));
+rateField    = makeField(ctrlGrid, 'Rate (Hz)',            1, 8,  'edit', num2str(params.rate_hz));
+durField     = makeField(ctrlGrid, 'Dur (cyc)',             1, 9,  'edit', num2str(params.duration_cyc));
+riseField    = makeField(ctrlGrid, 'Rise (cyc)',            1, 10,  'edit', num2str(params.rise_fall_cyc));
+earCalDrop   = makeField(ctrlGrid, 'Ear cal',              1, 11, 'drop', {'Session','None','File...'});
+
+resetPanel = uipanel(ctrlGrid, 'BorderType', 'none', 'BackgroundColor', 'w');
+resetPanel.Layout.Row    = 1;
+resetPanel.Layout.Column = 6;
+
+resetGrid = uigridlayout(resetPanel, [2 1]);
+resetGrid.RowHeight       = {16, '1x'};
+resetGrid.Padding         = [0 0 0 0];
+resetGrid.RowSpacing      = 2;
+resetGrid.BackgroundColor = 'w';
+
+resetLevelsBtn = uibutton(resetGrid, ...
+    'Text',            '↺', ...
+    'FontSize',        14, ...
+    'Tooltip',         'Reset to default levels', ...
+    'ButtonPushedFcn', @(~,~) resetLevels());
+resetLevelsBtn.Layout.Row    = 2;
+resetLevelsBtn.Layout.Column = 1;
+
+freqField.ValueChangedFcn    = @(~,~) clearPrevWaveforms();
+stimTypeDrop.ValueChangedFcn = @(~,~) clearPrevWaveforms();
+earDrop.ValueChangedFcn      = @(~,~) clearPrevWaveforms();
 
 runBtn = uibutton(ctrlGrid, ...
     'Text',            '▶  Run', ...
@@ -206,7 +231,7 @@ runBtn = uibutton(ctrlGrid, ...
     'FontWeight',      'bold', ...
     'ButtonPushedFcn', @(~,~) onRun());
 runBtn.Layout.Row    = 1;
-runBtn.Layout.Column = 11;
+runBtn.Layout.Column = 12;
 
 stopBtn = uibutton(ctrlGrid, ...
     'Text',            '■  Stop', ...
@@ -216,7 +241,7 @@ stopBtn = uibutton(ctrlGrid, ...
     'Enable',          'off', ...
     'ButtonPushedFcn', @(~,~) onStop());
 stopBtn.Layout.Row    = 1;
-stopBtn.Layout.Column = 12;
+stopBtn.Layout.Column = 13;
 
 % Status bar
 statusBar = uilabel(ctrlGrid, ...
@@ -476,6 +501,14 @@ xlabel(prevAx, 'Time (ms)');
         end
     end
 
+    function clearPrevWaveforms()
+        prevAxes = {};
+        cla(prevAx);
+        prevAx.YTick = [];
+        prevAx.XLim  = [str2double(viz_startField.Value) ...
+            str2double(viz_endField.Value)];
+    end
+
     function updateStatus(msg)
         statusBar.Text = msg;
     end
@@ -486,6 +519,10 @@ xlabel(prevAx, 'Time (ms)');
 
     function setWaveTitle(msg)
         wavePanel.Title = msg;
+    end
+
+    function resetLevels()
+        levelsField.Value = default_levels_str;
     end
 
     function setRunning(tf)
@@ -566,11 +603,16 @@ function updateWaveform(t, avg_combined, avg_pos, avg_neg)
 
         cla(prevAx);
         hold(prevAx, 'on');
+
+        % Compute step based on max amplitude across all waveforms
+        max_amp = max(cellfun(@(w) max(abs(w.avg)), prevAxes));
+        step    = max(6, max_amp * 2.5);   % at least 6 µV, or 2.5x the largest peak
+
         for i = 1:n
-            offset = (n - i) * 6;
+            offset = (n - i) * step;
             x_offset = length(t)-floor((length(t)/4));
             plot(prevAx, prevAxes{i}.t, prevAxes{i}.avg + offset, ...
-                'Color', [0.22 0.54 0.85], 'LineWidth', 1);
+                'Color', colors.combined, 'LineWidth', 1);
             text(prevAx, t(x_offset) + 0.2, offset+.5, ...
                 sprintf('%d dB', prevAxes{i}.level), ...
                 'FontSize', 10, 'Color', [0.4 0.4 0.4]);
@@ -578,6 +620,8 @@ function updateWaveform(t, avg_combined, avg_pos, avg_neg)
         hold(prevAx, 'off');
         prevAx.YTick = [];
         prevAx.XLim  = [t(1) t(end)];
+
+        prevAx.YLim = [-step/2, (n-1)*step + step/2];   % 4 µV padding top and bottom
         drawnow;
     end
 
