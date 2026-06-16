@@ -22,3 +22,4 @@ addpath(fullfile(rootDir, 'projects', 'lab_default'));
 % add something like: addpath(fullfile(rootDir, 'measures', '[measure_name]')); 
 
 disp('Paths have been initialized')
+gui_launcher()

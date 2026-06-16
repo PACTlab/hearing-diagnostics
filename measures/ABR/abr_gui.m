@@ -23,8 +23,8 @@ cfg = config_load();
 
 %% --- Connect with TDT
 
-%tdt = tdt_init(cfg, 'abr'); 
-tdt = []; 
+tdt = tdt_init(cfg, 'abr'); 
+%tdt = []; 
 
 %% --- Load calibration ---
 
