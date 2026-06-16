@@ -1,8 +1,7 @@
-function abr_gui(save_dir, metadata, launcher_fig)
+function abr_gui(save_dir, metadata)
 % ABR_GUI  Main ABR data collection window.
 % Launches session selection first, then opens main acquisition window.
 
-if nargin < 3; launcher_fig = []; end
 if nargin < 2; metadata = []; end
 if nargin < 1; save_dir = ''; end
 
@@ -23,7 +22,7 @@ cfg = config_load();
 
 %% --- Connect with TDT
 
-tdt = tdt_init(cfg, 'abr'); 
+tdt = tdt_init(cfg, 'ephys'); 
 %tdt = []; 
 
 %% --- Load calibration ---
@@ -457,12 +456,6 @@ xlabel(prevAx, 'Time (ms)');
             'DefaultOption', 2, ...
             'CancelOption',  2);
         if strcmp(sel, 'Quit')
-            if ~isempty(launcher_fig) && isvalid(launcher_fig)
-                % Re-enable launcher buttons
-                buttons = findobj(launcher_fig, 'Type', 'Button');
-                set(buttons, 'Enable', 'on');
-                % Keep placeholders disabled
-            end
             delete(fig);
             if ~isempty(tdt)
                 tdt_close(tdt);

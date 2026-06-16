@@ -23,7 +23,7 @@ cfg = config_load();
 
 %% --- Connect with TDT
 
-tdt = tdt_init(cfg, 'oae'); 
+tdt = tdt_init(cfg, 'acoustic'); 
 %tdt = []; 
 
 %% --- Load calibration ---

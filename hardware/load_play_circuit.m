@@ -10,7 +10,7 @@ function [f1,RP,FS]=load_play_circuit(config, measure_type, FS_tag,fig_num,USB_c
 %------------
 warning('off'); 
 switch measure_type
-    case 'abr'
+    case 'ephys'
        CIR_PATH=[config.hardware.circuit_dir, 'BasicPlayRecord_Medusa.rcx']; %The *.rco circuit used to play the files
     otherwise 
         CIR_PATH=[config.hardware.circuit_dir, 'BasicPlayRecord.rcx']; %The *.rco circuit used to play the files

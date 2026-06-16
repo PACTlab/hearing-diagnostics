@@ -8,7 +8,7 @@ function tdt = tdt_init(config, measure_type)
     usb_ch = config.hardware.usb_ch;
 
     if nargin < 2
-        measure_type = 'oae';
+        measure_type = 'acoustic';
     end
     %try
         [tdt.f1RZ, tdt.RZ, tdt.fs] = load_play_circuit(config, measure_type, FS_tag, fig_num, usb_ch, 0, IAC);

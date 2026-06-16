@@ -9,9 +9,6 @@ if isempty(save_dir)
     return
 end
 
-%% --- State ---
-state.measure_open = false;
-
 %% --- Figure ---
 
 fig = uifigure(...
@@ -64,6 +61,14 @@ divLbl2 = uilabel(sessGrid, 'Text', '|', 'FontColor', [0.8 0.8 0.8]);
 divLbl2.Layout.Row    = 1;
 divLbl2.Layout.Column = 8;
 
+refreshBtn = uibutton(sessGrid, 'Text', '↺ Refresh log', ...
+    'BackgroundColor', [.94 .9 .55], ...
+    'FontSize', 12, ...
+    'FontWeight', 'bold', ...
+    'ButtonPushedFcn', @(~,~) refreshFromDisk());
+refreshBtn.Layout.Row = 1;
+refreshBtn.Layout.Column = 8;
+
 % Change session button
 changeBtn = uibutton(sessGrid, ...
     'Text',            sprintf('Change\nSession'), ...
@@ -100,11 +105,11 @@ btnGrid.ColumnSpacing   = 6;
 btnGrid.BackgroundColor = 'w';
 
 % Active measures
-abrBtn = makeMeasureBtn(btnGrid, 'ABR', 1, true, @(~,~) abr_gui(save_dir, metadata, fig));
-efrBtn   = makeMeasureBtn(btnGrid, 'EFR',   2, true, @(~,~) efr_gui(save_dir, metadata, fig));
-dpBtn    = makeMeasureBtn(btnGrid, 'DPOAE', 3, true, @(~,~) dpoae_gui(save_dir, metadata, fig));
+abrBtn = makeMeasureBtn(btnGrid, 'ABR', 1, true, @(~,~) launchABR());
+efrBtn   = makeMeasureBtn(btnGrid, 'EFR',   2, true, @(~,~) launchEFR());
+dpBtn    = makeMeasureBtn(btnGrid, 'DPOAE', 3, true, @(~,~) launchDPOAE());
 sfBtn    = makeMeasureBtn(btnGrid, 'SFOAE', 4, false, @(~,~) []);
-teoBtn   = makeMeasureBtn(btnGrid, 'TEOAE', 5, false, @(~,~) []);
+teBtn   = makeMeasureBtn(btnGrid, 'TEOAE', 5, false, @(~,~) []);
 memrBtn  = makeMeasureBtn(btnGrid, 'MEMR',  6, false, @(~,~) []);
 
 % Divider
@@ -115,8 +120,8 @@ div2.Layout.Row    = 1;
 div2.Layout.Column = 7;
 
 % Calibration buttons
-earCalBtn = makeMeasureBtn(btnGrid, 'Ear Cal', 8, true, @(~,~) ear_cal_gui(save_dir, metadata, fig));
-txdBtn = makeMeasureBtn(btnGrid, 'Transducer', 9, true, @(~,~) transducer_check_gui(save_dir, metadata, fig));
+earCalBtn = makeMeasureBtn(btnGrid, 'Ear Cal', 8, true, @(~,~) launchEarCal());
+txdBtn = makeMeasureBtn(btnGrid, 'Transducer', 9, true, @(~,~) launchTransducer());
 fplBtn      = makeMeasureBtn(btnGrid, 'FPL',        10, false, @(~,~) []);
 
 
@@ -171,9 +176,7 @@ saveNotesBtn = uibutton(btnWrapGrid, 'Text', 'Save Notes', ...
 saveNotesBtn.Layout.Row    = 1;
 saveNotesBtn.Layout.Column = 2;
 
-% Store all buttons for enable/disable
-all_buttons = {abrBtn, efrBtn, dpBtn, sfBtn, teoBtn, memrBtn, ...
-    earCalBtn, txdBtn, fplBtn, changeBtn, saveNotesBtn};
+
 %% --- Session timer ---
 try
     session_start = tic;
@@ -188,21 +191,35 @@ end
 %% ================================================================
 %  CALLBACKS
 %% ================================================================
+    function launchABR()
+        abr_gui(save_dir, metadata);
+    end
 
-    function onMeasureClosed()
-        state.measure_open = false;
-        setButtonsEnabled(true);
-        % Reload metadata to get updated run log
-        try
-            metadata = session_load(save_dir);
-            refreshLog();
-        catch
-        end
+    function launchEFR()
+        efr_gui(save_dir, metadata); 
+    end
+
+    function launchDPOAE()
+        dpoae_gui(save_dir, metadata); 
+    end
+
+    function launchEarCal()
+        ear_cal_gui(save_dir, metadata);
+    end
+
+    function launchTransducer()
+        transducer_check_gui(save_dir, metadata);
+    end
+
+    function refreshFromDisk()
+        metadata = session_load(save_dir);
+        refreshLog();
     end
 
     function onChangeSession()
-        if state.measure_open; return; end
+
         [new_dir, new_meta] = session_load_or_create();
+
         if isempty(new_dir); return; end
 
         save_dir = new_dir;
@@ -220,12 +237,6 @@ end
     end
 
     function onClose()
-        if state.measure_open
-            uialert(fig, ...
-                'Close the active measure before exiting.', ...
-                'Cannot close');
-            return
-        end
         stop(tim);
         delete(tim);
         delete(fig);
@@ -272,21 +283,6 @@ end
             timerLbl.Text = sprintf('%02d:%02d:%02d', hrs, mins, secs);
         else
             timerLbl.Text = sprintf('%02d:%02d', mins, secs);
-        end
-    end
-
-    function setButtonsEnabled(tf)
-        val = 'on';
-        if ~tf; val = 'off'; end
-        for i = 1:length(all_buttons)
-            if ~isempty(all_buttons{i})
-                all_buttons{i}.Enable = val;
-            end
-        end
-        % Keep placeholders always off
-        placeholder_btns = {efrBtn, dpBtn, sfBtn, teoBtn, memrBtn, fplBtn};
-        for i = 1:length(placeholder_btns)
-            placeholder_btns{i}.Enable = 'off';
         end
     end
 

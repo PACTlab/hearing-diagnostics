@@ -12,7 +12,7 @@ function fname = session_build_filename(metadata, params)
 % Output:
 %   fname     - e.g. CHL-047_2024-11-15_ABR_R_8000Hz_80dB_run001.mat
 
-run_num = metadata.total_runs + 1;
+run_num = metadata.total_runs; % + 1;
 ear_str = upper(params.ear(1));
 
 % Call the measure's own tag function if it exists

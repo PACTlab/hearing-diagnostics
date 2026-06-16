@@ -60,6 +60,7 @@ run.result = struct();
 
 metadata.total_runs = metadata.total_runs + 1;
 
+
 %% --- Build filename ---
 
 fname    = session_build_filename(metadata, params);

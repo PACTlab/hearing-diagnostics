@@ -1,23 +1,34 @@
-function efr_gui()
+function efr_gui(save_dir, metadata, launcher_fig)
 % EFR_GUI  Main EFR data collection window.
 % Launches session selection first, then opens main acquisition window.
+
+if nargin < 3; launcher_fig = []; end
+if nargin < 2; metadata = []; end
+if nargin < 1; save_dir = ''; end
 
 %% --- To Do --
 % Handle calibration
 warning('off', 'Session:noTransducerCal');
 
+% fix getting Gui params
+
 %% --- Session ---
 % Lets you create (or reload) the session file to save everything to
-
-[save_dir, metadata] = session_load_or_create();
+% Reads from launcher if used to get to abr_gui()
 if isempty(save_dir)
-    return
+    [save_dir, metadata] = session_load_or_create();
+    if isempty(save_dir); return; end
 end
 
-%% --- Load calibration ---
 
+%% --- Load General Config Info ---
 cfg = config_load();
 
+%% --- Connect with TDT
+tdt = tdt_init(cfg, 'ephys'); 
+%tdt = []; 
+
+%% --- Load Calibration --- 
 % Load transducer cal if configured
 transducer_cal = [];
 if ~isempty(cfg.calibration.active_transducer_file)
@@ -42,7 +53,14 @@ params = project_load_defaults('efr', metadata.project);
 
 state.running  = false;
 state.stop_req = false;
+state.stub_mode = isempty(tdt); 
 prevAxes       = {};
+
+% Show stub mode warning in status bar if active
+if state.stub_mode
+    fprintf('EFR GUI running in stub mode — no hardware connected.\n');
+end
+
 
 %% --- Main figure ---
 
@@ -164,7 +182,7 @@ ctrlGrid.BackgroundColor = 'w';
 
 % Parameter fields
 stimTypeDrop = makeField(ctrlGrid, 'Stimulus Type',              1, 1,  'drop', {'WAV','SAM','RAM'});
-stimFile    = makeField(ctrlGrid, 'Wav File', 1, 2, 'drop', {params.wav_file})
+stimFile    = makeField(ctrlGrid, 'Wav File', 1, 2, 'drop', {params.wav_file}); 
 %freqField    = makeField(ctrlGrid, 'Frequency (Hz)',        1, 2,  'edit', num2str(params.carrier_frequency_hz));
 earDrop      = makeField(ctrlGrid, 'Ear',                  1, 3,  'drop', {'Right','Left'});
 polarityDrop = makeField(ctrlGrid, 'Polarity',             1, 4,  'drop', {'Alt','Cond','Rare'});
@@ -291,22 +309,23 @@ vizPanel = uipanel(leftGrid, ...
 vizPanel.Layout.Row    = 2;
 vizPanel.Layout.Column = 1;
 
-vizGrid = uigridlayout(vizPanel, [2 4]);
-vizGrid.ColumnWidth     = {'1x', '1x', '1x', '1x'};
+vizGrid = uigridlayout(vizPanel, [2 2]);
+vizGrid.ColumnWidth     = {'1x', '1x'};
 vizGrid.RowHeight       = {'1x', '1x'};
 vizGrid.Padding         = [10 4 10 4];
 vizGrid.ColumnSpacing   = 50;
 vizGrid.BackgroundColor = 'w';
 
 % TODO: wire viz panel fields to update display
-viz1    = makeField(vizGrid, 'Gain',  1, 1,  'edit', num2str(params.rise_fall_ms));
-viz2    = makeField(vizGrid, 'Ear cal', 1, 2, 'drop', {'Session','None','File...'});
-viz3    = makeField(vizGrid, 'Start (ms)',  1, 3,  'edit', num2str(params.viz_window_ms(1)));
-viz4    = makeField(vizGrid, 'End (ms)',  1, 4,  'edit', num2str(params.viz_window_ms(2)));
-viz5    = makeField(vizGrid, 'Y scale (\muV)',  2, 1,  'edit', num2str(params.amplitude_window_uV(2)));
-viz6    = makeField(vizGrid, 'Gain',  2, 2,  'edit', num2str(params.rise_fall_ms));
-viz7    = makeField(vizGrid, 'Gain',  2, 3,  'edit', num2str(params.rise_fall_ms));
-viz8    = makeField(vizGrid, 'Gain',  2, 4,  'edit', num2str(params.rise_fall_ms));
+viz_startField    = makeField(vizGrid, 'Start (ms)',       1, 1, 'edit', num2str(params.viz_window_ms(1)));
+viz_endField      = makeField(vizGrid, 'End (ms)',         1, 2, 'edit', num2str(params.viz_window_ms(2)));
+viz_scaleField    = makeField(vizGrid, 'Y scale (µV)',     2, 1, 'edit', num2str(params.amplitude_window_uV(2)));
+viz_polarityDrop  = makeField(vizGrid, 'Polarity display', 2, 2, 'drop', {'Combined', 'Separated', 'Positive only', 'Negative only'});
+
+viz_startField.ValueChangedFcn   = @(~,~) updateVizWindow();
+viz_endField.ValueChangedFcn     = @(~,~) updateVizWindow();
+viz_scaleField.ValueChangedFcn   = @(~,~) updateVizScale();
+viz_polarityDrop.ValueChangedFcn = @(~,~) updateVizPolarity();
 
 %% --- Right col: previous waveforms ---
 
@@ -348,16 +367,19 @@ xlabel(prevAx, 'Time (ms)');
 
         % Build callbacks
         callbacks.update_status   = @(msg)           updateStatus(msg);
-        callbacks.update_waveform = @(t, avg)        set(avgLine, 'XData', t, 'YData', avg);
-        callbacks.update_noise    = @(rms)           updateNoise(rms);
-        callbacks.add_prev        = @(t, avg, lv, f) addPrevWaveform(t, avg, lv, f);
+        callbacks.update_waveform = @(t, avg_combined, avg_pos, avg_neg) ...
+            updateWaveform(t, avg_combined, avg_pos, avg_neg);        callbacks.update_noise    = @(rms)           updateNoise(rms);
+        callbacks.add_prev = @(t, avg, lv, f) addPrevWaveform(t, avg, lv, f);
         callbacks.should_stop     = @()              state.stop_req;
         callbacks.update_title = @(msg) setWaveTitle(msg);
 
 
         try
-            metadata = efr_run(params, save_dir, metadata, [], transducer_cal, callbacks);
+            metadata = efr_run(params, save_dir, metadata, tdt, transducer_cal, callbacks);
         catch e
+            if ~isempty(tdt)
+                tdt_close(tdt);
+            end
             state.running = false;
             setRunning(false);
             wavePanel.Title = 'Running average';
@@ -399,7 +421,16 @@ xlabel(prevAx, 'Time (ms)');
             'DefaultOption', 2, ...
             'CancelOption',  2);
         if strcmp(sel, 'Quit')
+            if ~isempty(launcher_fig) && isvalid(launcher_fig)
+                % Re-enable launcher buttons
+                buttons = findobj(launcher_fig, 'Type', 'Button');
+                set(buttons, 'Enable', 'on');
+                % Keep placeholders disabled
+            end
             delete(fig);
+            if ~isempty(tdt)
+                tdt_close(tdt);
+            end
         end
     end
 
@@ -410,6 +441,7 @@ xlabel(prevAx, 'Time (ms)');
     function p = readParamsFromGui()
         p = project_load_defaults('abr', metadata.project);
         p.stim_type    = lower(strrep(stimTypeDrop.Value, ' ', ''));
+        p.stimFile = lower(stimFile.Value); 
         p.frequency_hz = str2double(freqField.Value);
         p.ear          = lower(earDrop.Value);
         p.polarity     = lower(polarityDrop.Value);
@@ -486,6 +518,64 @@ xlabel(prevAx, 'Time (ms)');
         prevAx.XLim  = [t(1) t(end)];
         drawnow;
     end
+
+    function updateWaveform(t, avg_combined, avg_pos, avg_neg)
+
+        % Baseline correct each
+        avg_combined = baselineCorrect(avg_combined, t);
+        avg_pos      = baselineCorrect(avg_pos, t);
+        avg_neg      = baselineCorrect(avg_neg, t);
+
+        % Pick which average to display based on polarity dropdown
+        switch viz_polarityDrop.Value
+            case 'Combined'
+                set(avgLine, ...
+                    'XData', t, 'YData', avg_combined, ...
+                    'Color', colors.combined);
+                set(avgLine_neg, 'XData', NaN, 'YData', NaN);
+            case 'Separated'
+                set(avgLine, ...
+                    'XData', t, 'YData', avg_pos, ...
+                    'Color', colors.positive);
+                set(avgLine_neg, ...
+                    'XData', t, 'YData', avg_neg, ...
+                    'Color', colors.negative);
+            case 'Positive only'
+                set(avgLine, ...
+                    'XData', t, 'YData', avg_pos, ...
+                    'Color', colors.positive);
+                set(avgLine_neg, 'XData', NaN, 'YData', NaN);
+
+            case 'Negative only'
+                set(avgLine, ...
+                    'XData', t, 'YData', avg_neg, ...
+                    'Color', colors.negative);
+                set(avgLine_neg, 'XData', NaN, 'YData', NaN);
+        end
+
+    end
+    function updateVizWindow()
+        start_ms = str2double(viz_startField.Value);
+        end_ms   = str2double(viz_endField.Value);
+        if ~isnan(start_ms) && ~isnan(end_ms) && end_ms > start_ms
+            waveAx.XLim = [start_ms end_ms];
+            prevAx.XLim = [start_ms end_ms];
+        end
+    end
+
+    function updateVizScale()
+        scale = str2double(viz_scaleField.Value);
+        if ~isnan(scale) && scale > 0
+            waveAx.YLim = [-scale scale];
+        end
+    end
+
+    function updateVizPolarity()
+        % Nothing to do immediately — next update_waveform call
+        % will pick up the new polarity selection automatically
+    end
+
+    
 
 end   % efr_gui
 
