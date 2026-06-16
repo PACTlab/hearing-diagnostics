@@ -1,0 +1,254 @@
+function metadata = dpoae_run(params, save_dir, metadata, tdt, cal, callbacks)
+% ABR_RUN  Run ABR acquisition for one frequency across all levels.
+%
+% Inputs:
+%   params    - ABR params struct (levels_dbspl can be array)
+%   save_dir  - full path to session folder
+%   metadata  - session metadata struct
+%   tdt       - TDT hardware struct from tdt_init, or [] for stub mode
+%   cal       - transducer calibration struct, or []
+%   callbacks - struct of function handles for real-time GUI updates:
+%                 .update_status(msg)
+%                 .update_waveform(t, avg_uv)
+%                 .update_noise(rms_uv)
+%                 .add_prev(t, avg_uv, level, freq)
+%                 .should_stop()  returns logical
+%               Pass [] to run headless with no display updates.
+
+%% --- Validate ---
+
+% err = dpoae_validate_params(params);
+% if ~isempty(err)
+%     error('dpoae_run:invalidParams', '%s', err);
+% end
+
+has_callbacks = ~isempty(callbacks);
+stub_mode     = isempty(tdt);
+
+if stub_mode
+    warning('dpoae_run:stubMode', ...
+        'TDT handle is empty — running in stub mode with fake data.');
+end
+
+%% --- Epoch dimensions ---
+
+epoch_samples = round(diff(params.rec_window_ms) / 1000 * params.fs);
+t_epoch       = linspace(params.rec_window_ms(1), ...
+                         params.rec_window_ms(2), epoch_samples);
+
+%% ================================================================
+%  TRIAL LOOP
+%% ================================================================
+
+for trial_idx = 1:params.trials
+
+    this_level = params.levels_dbspl(trial_idx);
+
+    %% --- Check stop ---
+    if has_callbacks && callbacks.should_stop()
+        fprintf('ABR run stopped by user at level %d.\n', trial_idx);
+        break
+    end
+
+    notify(sprintf('Level %d / %d — %d dB SPL — generating stimulus...', ...
+        trial_idx, length(params.levels_dbspl), this_level));
+
+    if has_callbacks && isfield(callbacks, 'update_title')
+        callbacks.update_title(sprintf('Running average — %d Hz, %d dB SPL', ...
+            params.frequency_hz, this_level));
+    end
+    %% --- Generate stimulus for this level ---
+    params_this_level              = params;
+    params_this_level.levels_dbspl = this_level;
+
+    [stim_out, stim_info] = abr_make_stimulus(params_this_level, cal);
+
+    %% --- Initialize accumulators ---
+    running_sum_combined  = zeros(1, epoch_samples);
+    running_sum_pos = zeros(1, epoch_samples); 
+    running_sum_neg = zeros(1, epoch_samples); 
+    epochs = zeros(params.n_reps, epoch_samples); 
+    rep_accepted = 0;
+    rep_accepted_pos     = 0;
+    rep_accepted_neg     = 0;
+    n_rejected   = 0;
+    last_avg     = [];
+
+    notify(sprintf('Level %d / %d — %d dB SPL — starting...', ...
+        trial_idx, length(params.levels_dbspl), this_level));
+
+    %% =============================================================
+    %  REP LOOP
+    %% =============================================================
+
+    for rep = 1:params.n_reps
+
+        %% --- Check stop ---
+        if has_callbacks && callbacks.should_stop()
+            break
+        end
+
+        %% --- Pick polarity ---
+        if mod(rep, 2) == 1
+            play_buff = stim_out.pos;
+        else
+            play_buff = stim_out.neg;
+        end
+
+        %% --- Pick Ear --- 
+        if strcmp(params_this_level.ear, 'left')
+            stim_ch1 = play_buff;
+            stim_ch2 = zeros(size(play_buff));
+        elseif strcmp(params_this_level.ear, 'right')
+            stim_ch1 = zeros(size(play_buff));
+            stim_ch2 = play_buff;
+        else
+            stim_ch1 = play_buff;
+            stim_ch2 = play_buff;
+        end
+
+        stim_ch1 = stim_ch1(1:stim_out.isi_samples(rep)); 
+        stim_ch2 = stim_ch2(1:stim_out.isi_samples(rep)); 
+
+        %% --- Set attns ---
+            att_ch1 = 30; 
+            att_ch2 = 30; %% hardcoded now should take into account transducer
+
+        %% --- Set other info for tdt play and record
+        Nreps = 1; 
+        throwAway = 0; 
+        delayComp = 0; 
+        %% --- Play and record ---
+        if stub_mode
+            % Display the stimulus so you can verify waveform shape,
+            % polarity, and level before connecting hardware.
+            % Resample stimulus to epoch length if needed.
+            stim_portion = play_buff(1:stim_out.n_stim);
+
+            if length(stim_portion) >= epoch_samples
+                epoch_raw = stim_portion(1:epoch_samples) * 0.1e-6;
+            else
+                % Pad with low-level noise after stimulus ends
+                epoch_raw = zeros(1, epoch_samples);
+                epoch_raw(1:length(stim_portion)) = stim_portion * 0.1e-6;
+                epoch_raw = epoch_raw + randn(1, epoch_samples) * 0.02e-6;
+            end
+            pause(0.001);
+            epoch = epoch_raw(1,1:epoch_samples); 
+        else
+            epoch_raw = tdt_play_record(tdt, stim_ch1, stim_ch2, att_ch1, att_ch2, Nreps, throwAway, delayComp);
+            epoch = epoch_raw(1, 1:epoch_samples); 
+        end
+
+        %% --- Save all raw epochs --- 
+
+        epochs(rep, :) = epoch; 
+
+        %% --- Artifact rejection ---
+        rejected = false;
+        if params.artifact_reject
+            if max(abs(epoch_raw)) > params.artifact_thresh_v
+                rejected   = true;
+                n_rejected = n_rejected + 1;
+            end
+        end
+
+        %% --- Accumulate ---
+
+        if ~rejected
+            rep_accepted = rep_accepted + 1;
+            running_sum_combined = running_sum_combined + epoch_raw(1, 1:epoch_samples);
+
+            % Track polarity separately for display
+            if mod(rep, 2) == 1
+                rep_accepted_pos     = rep_accepted_pos + 1;
+                running_sum_pos      = running_sum_pos + epoch_raw(1, 1:epoch_samples);
+            else
+                rep_accepted_neg     = rep_accepted_neg + 1;
+                running_sum_neg      = running_sum_neg + epoch_raw(1, 1:epoch_samples);
+            end
+        end
+
+        %% --- Update display every 25 reps ---
+        if mod(rep, 10) == 0 && rep_accepted > 0 && has_callbacks
+            avg_combined = running_sum_combined / rep_accepted;
+
+            avg_pos = zeros(1, epoch_samples);
+            avg_neg = zeros(1, epoch_samples);
+            if rep_accepted_pos > 0
+                avg_pos = running_sum_pos / rep_accepted_pos;
+            end
+            if rep_accepted_neg > 0
+                avg_neg = running_sum_neg / rep_accepted_neg;
+            end
+
+            callbacks.update_waveform(t_epoch, ...
+                avg_combined * 1e6, avg_pos * 1e6, avg_neg * 1e6);
+            callbacks.update_noise(std(epochs(1:rep_accepted,:)) * 1e6);
+            notify(sprintf(...
+                'Level %d / %d — %d dB SPL — rep %d / %d  |  rejected: %d', ...
+                trial_idx, length(params.levels_dbspl), ...
+                this_level, rep, params.n_reps, n_rejected));
+            drawnow;
+        end
+
+    end   % rep loop
+
+    %% --- Save this level ---
+    if rep_accepted > 0
+        final_avg = running_sum_combined / rep_accepted;
+        last_avg  = final_avg;
+
+        save_params              = params;
+        save_params.levels_dbspl = this_level;
+
+        save_data.t_ms              = t_epoch; 
+        save_data.epochs            = epochs;
+        save_data.average           = final_avg;
+        save_data.average_pos      = running_sum_pos / max(rep_accepted_pos, 1);
+        save_data.average_neg      = running_sum_neg / max(rep_accepted_neg, 1);
+        save_data.fs                = params.fs;
+        save_data.n_reps_accepted   = rep_accepted;
+        save_data.n_reps_pos       = rep_accepted_pos;
+        save_data.n_reps_neg       = rep_accepted_neg;
+        save_data.n_reps_rejected   = n_rejected;
+        save_data.stim_info         = stim_info;
+
+        [~, metadata] = session_save_run(save_dir, metadata, ...
+            save_params, save_data);
+
+        fprintf('Level %d dB complete. %d/%d reps accepted.\n', ...
+            this_level, rep_accepted, params.n_reps);
+
+        %% --- Update previous waveforms panel ---
+        if has_callbacks
+            callbacks.add_prev(t_epoch, final_avg * 1e6, ...
+                this_level, params.frequency_hz);
+        end
+    else
+        fprintf('Level %d dB — no accepted reps, not saved.\n', this_level);
+    end
+
+end   % level loop
+
+%% ================================================================
+%  CLEANUP
+%% ================================================================
+
+if ~stub_mode
+    invoke(tdt.RZ, 'ZeroTag', 'datainL');
+    invoke(tdt.RZ, 'ZeroTag', 'datainR');
+end
+
+%% ================================================================
+%  NESTED HELPER
+%% ================================================================
+
+    function notify(msg)
+        fprintf('%s\n', msg);
+        if has_callbacks
+            callbacks.update_status(msg);
+        end
+    end
+
+end

@@ -1,14 +1,18 @@
-function ear_cal_gui()
+function ear_cal_gui(save_dir, metadata, on_close_callback)
+
+if nargin < 3; on_close_callback = []; end
+if nargin < 2; metadata = []; end  
+if nargin < 1; save_dir = ''; end
+
+%% --- Session ---
+if isempty(save_dir)
+    [save_dir, metadata] = session_load_or_create();
+    if isempty(save_dir); return; end
+end
+
 % EAR_CAL_GUI  In-ear calibration GUI.
 % Requires an active session. Saves result to session folder and
 % loads filter into session automatically.
-
-%% --- Session ---
-
-[save_dir, metadata] = session_load_or_create();
-if isempty(save_dir)
-    return
-end
 
 %% --- Config and hardware ---
 
@@ -298,6 +302,9 @@ progressLbl.Layout.Column = 1;
         end
         if ~isempty(tdt)
             tdt_close(tdt);
+        end
+        if ~isempty(on_close_callback)
+            on_close_callback();
         end
         delete(fig);
     end

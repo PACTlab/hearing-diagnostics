@@ -2,6 +2,8 @@ function transducer_check_gui()
 % TRANSDUCER_CHECK_GUI  Transducer frequency response check.
 % No session required. Results saved to calibration/data/probe_checks/.
 
+% TODO: should we get here from the launcher? 
+
 %% --- Load config and registry ---
 
 cfg         = config_load();

@@ -43,13 +43,13 @@ fprintf('\n');
 % config.hardware.fig_num                       = 99;
 % config.hardware.n_channels                    = 1;
 % config.hardware.gain                          = 10000;
-%config.hardware.circuit_dir                     = 'C:\Users\TDT\Desktop\Code\hearing-diagnostics\hardware\circuits\'
+config.hardware.circuit_dir                     = '.\hardware\circuits\'
 
 % config.calibration.active_transducer_file     = 'calibration/data/transducer/MY_CAL.mat';
 % config.calibration.active_fpl_file            = '';
 % config.calibration.max_age_days               = 7;
 
-% config.data.root_dir                          = 'C:\Users\TDT\Desktop\Code\hearing-diagnostics\data\';
+ config.data.root_dir                          = '.\data\';
 % config.last_session_dir                       = ''; 
 
 %% --- Save if any changes were made ---
