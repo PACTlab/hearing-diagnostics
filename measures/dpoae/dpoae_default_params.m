@@ -42,6 +42,7 @@ params.level_f1_dB      = 55;
 params.trials         = 12; 
 
 % Auto Collect parameters
+params.auto_stop = true; 
 params.SNRcriterion = 6; 
 params.maxTrials = 50; 
 params.minTrials = 12; 
@@ -52,8 +53,10 @@ params.noisefreqs_multiplier = 1 + -1*params.sweepDirection.*[.1:.02:.16];
 % Acquisition
 params.fs                 = 48828.125;     % TDT standard
 
-% Recording
+% Recording and analysis
 params.gain               = 30;        % read from the transducer file?
+params.VtoSPL   = 1; 
+params.npoints = 512; 
 
 % Artifact rejection — placeholder
 params.artifact_reject    = false;

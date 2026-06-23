@@ -1,26 +1,21 @@
 function metadata = dpoae_run(params, save_dir, metadata, tdt, cal, callbacks)
-% ABR_RUN  Run ABR acquisition for one frequency across all levels.
+% DPOAE_RUN  Run DPOAE acquisition.
 %
 % Inputs:
-%   params    - ABR params struct (levels_dbspl can be array)
+%   params    - DPOAE params struct from dpoae_default_params / GUI
 %   save_dir  - full path to session folder
 %   metadata  - session metadata struct
 %   tdt       - TDT hardware struct from tdt_init, or [] for stub mode
 %   cal       - transducer calibration struct, or []
 %   callbacks - struct of function handles for real-time GUI updates:
 %                 .update_status(msg)
-%                 .update_waveform(t, avg_uv)
-%                 .update_noise(rms_uv)
-%                 .add_prev(t, avg_uv, level, freq)
+%                 .update_waveform(t, avg)
+%                 .update_noise(rms)
+%                 .add_prev(t, avg, trial, freq)
 %                 .should_stop()  returns logical
 %               Pass [] to run headless with no display updates.
 
-%% --- Validate ---
-
-% err = dpoae_validate_params(params);
-% if ~isempty(err)
-%     error('dpoae_run:invalidParams', '%s', err);
-% end
+%% --- Setup ---
 
 has_callbacks = ~isempty(callbacks);
 stub_mode     = isempty(tdt);
@@ -30,206 +25,175 @@ if stub_mode
         'TDT handle is empty — running in stub mode with fake data.');
 end
 
-%% --- Epoch dimensions ---
+%% --- Attenuator settings ---
+att_ch1 = 30;
+att_ch2 = 30;  % TODO: derive from transducer cal
 
-epoch_samples = round(diff(params.rec_window_ms) / 1000 * params.fs);
-t_epoch       = linspace(params.rec_window_ms(1), ...
-                         params.rec_window_ms(2), epoch_samples);
+%% --- Shared TDT play/record args ---
+Nreps      = 1;
+throwAway  = 0;
+delayComp  = 0;
 
 %% ================================================================
-%  TRIAL LOOP
+%  BRANCH: swept vs discrete
 %% ================================================================
 
-for trial_idx = 1:params.trials
+switch lower(params.stim_type)
 
-    this_level = params.levels_dbspl(trial_idx);
+    %% ============================================================
+    case 'swept'
+    %% ============================================================
 
-    %% --- Check stop ---
-    if has_callbacks && callbacks.should_stop()
-        fprintf('ABR run stopped by user at level %d.\n', trial_idx);
-        break
-    end
+        %% --- Generate stimulus ---
+        [stim_out, stim_info] = dpoae_make_stimulus(params, cal);
 
-    notify(sprintf('Level %d / %d — %d dB SPL — generating stimulus...', ...
-        trial_idx, length(params.levels_dbspl), this_level));
+        %% --- Route to ear ---
+        [stim_ch1, stim_ch2] = routeToEar(stim_out.ch1, stim_out.ch2, params.ear);
+        
+        epoch_samples = round(params.buffdur_ms / 1000 * params.fs);
+        t_epoch       = linspace(0, params.buffdur_ms, epoch_samples);
 
-    if has_callbacks && isfield(callbacks, 'update_title')
-        callbacks.update_title(sprintf('Running average — %d Hz, %d dB SPL', ...
-            params.frequency_hz, this_level));
-    end
-    %% --- Generate stimulus for this level ---
-    params_this_level              = params;
-    params_this_level.levels_dbspl = this_level;
+        % Accumulate trials: rows = trials, cols = samples
+        all_trials = zeros(params.trials, epoch_samples);
 
-    [stim_out, stim_info] = abr_make_stimulus(params_this_level, cal);
+        for trial_idx = 1:params.trials
 
-    %% --- Initialize accumulators ---
-    running_sum_combined  = zeros(1, epoch_samples);
-    running_sum_pos = zeros(1, epoch_samples); 
-    running_sum_neg = zeros(1, epoch_samples); 
-    epochs = zeros(params.n_reps, epoch_samples); 
-    rep_accepted = 0;
-    rep_accepted_pos     = 0;
-    rep_accepted_neg     = 0;
-    n_rejected   = 0;
-    last_avg     = [];
+            if has_callbacks && callbacks.should_stop()
+                fprintf('DPOAE run stopped by user at trial %d.\n', trial_idx);
+                break
+            end
 
-    notify(sprintf('Level %d / %d — %d dB SPL — starting...', ...
-        trial_idx, length(params.levels_dbspl), this_level));
-
-    %% =============================================================
-    %  REP LOOP
-    %% =============================================================
-
-    for rep = 1:params.n_reps
-
-        %% --- Check stop ---
-        if has_callbacks && callbacks.should_stop()
-            break
-        end
-
-        %% --- Pick polarity ---
-        if mod(rep, 2) == 1
-            play_buff = stim_out.pos;
-        else
-            play_buff = stim_out.neg;
-        end
-
-        %% --- Pick Ear --- 
-        if strcmp(params_this_level.ear, 'left')
-            stim_ch1 = play_buff;
-            stim_ch2 = zeros(size(play_buff));
-        elseif strcmp(params_this_level.ear, 'right')
-            stim_ch1 = zeros(size(play_buff));
-            stim_ch2 = play_buff;
-        else
-            stim_ch1 = play_buff;
-            stim_ch2 = play_buff;
-        end
-
-        stim_ch1 = stim_ch1(1:stim_out.isi_samples(rep)); 
-        stim_ch2 = stim_ch2(1:stim_out.isi_samples(rep)); 
-
-        %% --- Set attns ---
-            att_ch1 = 30; 
-            att_ch2 = 30; %% hardcoded now should take into account transducer
-
-        %% --- Set other info for tdt play and record
-        Nreps = 1; 
-        throwAway = 0; 
-        delayComp = 0; 
-        %% --- Play and record ---
-        if stub_mode
-            % Display the stimulus so you can verify waveform shape,
-            % polarity, and level before connecting hardware.
-            % Resample stimulus to epoch length if needed.
-            stim_portion = play_buff(1:stim_out.n_stim);
-
-            if length(stim_portion) >= epoch_samples
-                epoch_raw = stim_portion(1:epoch_samples) * 0.1e-6;
+            %% --- Play and record ---
+            if stub_mode
+                epoch = makeStubEpoch(stim_out.ch1, epoch_samples);
             else
-                % Pad with low-level noise after stimulus ends
-                epoch_raw = zeros(1, epoch_samples);
-                epoch_raw(1:length(stim_portion)) = stim_portion * 0.1e-6;
-                epoch_raw = epoch_raw + randn(1, epoch_samples) * 0.02e-6;
-            end
-            pause(0.001);
-            epoch = epoch_raw(1,1:epoch_samples); 
-        else
-            epoch_raw = tdt_play_record(tdt, stim_ch1, stim_ch2, att_ch1, att_ch2, Nreps, throwAway, delayComp);
-            epoch = epoch_raw(1, 1:epoch_samples); 
-        end
-
-        %% --- Save all raw epochs --- 
-
-        epochs(rep, :) = epoch; 
-
-        %% --- Artifact rejection ---
-        rejected = false;
-        if params.artifact_reject
-            if max(abs(epoch_raw)) > params.artifact_thresh_v
-                rejected   = true;
-                n_rejected = n_rejected + 1;
-            end
-        end
-
-        %% --- Accumulate ---
-
-        if ~rejected
-            rep_accepted = rep_accepted + 1;
-            running_sum_combined = running_sum_combined + epoch_raw(1, 1:epoch_samples);
-
-            % Track polarity separately for display
-            if mod(rep, 2) == 1
-                rep_accepted_pos     = rep_accepted_pos + 1;
-                running_sum_pos      = running_sum_pos + epoch_raw(1, 1:epoch_samples);
-            else
-                rep_accepted_neg     = rep_accepted_neg + 1;
-                running_sum_neg      = running_sum_neg + epoch_raw(1, 1:epoch_samples);
-            end
-        end
-
-        %% --- Update display every 25 reps ---
-        if mod(rep, 10) == 0 && rep_accepted > 0 && has_callbacks
-            avg_combined = running_sum_combined / rep_accepted;
-
-            avg_pos = zeros(1, epoch_samples);
-            avg_neg = zeros(1, epoch_samples);
-            if rep_accepted_pos > 0
-                avg_pos = running_sum_pos / rep_accepted_pos;
-            end
-            if rep_accepted_neg > 0
-                avg_neg = running_sum_neg / rep_accepted_neg;
+                epoch_raw = tdt_play_record(tdt, stim_ch1, stim_ch2, ...
+                    att_ch1, att_ch2, Nreps, throwAway, delayComp);
+                epoch = epoch_raw(1, 1:epoch_samples);
             end
 
-            callbacks.update_waveform(t_epoch, ...
-                avg_combined * 1e6, avg_pos * 1e6, avg_neg * 1e6);
-            callbacks.update_noise(std(epochs(1:rep_accepted,:)) * 1e6);
-            notify(sprintf(...
-                'Level %d / %d — %d dB SPL — rep %d / %d  |  rejected: %d', ...
-                trial_idx, length(params.levels_dbspl), ...
-                this_level, rep, params.n_reps, n_rejected));
-            drawnow;
-        end
+            all_trials(trial_idx, :) = epoch;
 
-    end   % rep loop
+            notify(sprintf('Swept trial %d / %d — complete.', ...
+                trial_idx, params.trials));
 
-    %% --- Save this level ---
-    if rep_accepted > 0
-        final_avg = running_sum_combined / rep_accepted;
-        last_avg  = final_avg;
+            %% --- Online analysis after each trial ---
+            if trial_idx >= 2   % need at least 2 trials for artifact rejection stats
+                [result, done] = dpoae_online_analysis(...
+                    all_trials(1:trial_idx, :), stim_info, params);
 
-        save_params              = params;
-        save_params.levels_dbspl = this_level;
+                if has_callbacks
+                    callbacks.update_waveform(result);
+                    drawnow;
+                end
 
-        save_data.t_ms              = t_epoch; 
-        save_data.epochs            = epochs;
-        save_data.average           = final_avg;
-        save_data.average_pos      = running_sum_pos / max(rep_accepted_pos, 1);
-        save_data.average_neg      = running_sum_neg / max(rep_accepted_neg, 1);
-        save_data.fs                = params.fs;
-        save_data.n_reps_accepted   = rep_accepted;
-        save_data.n_reps_pos       = rep_accepted_pos;
-        save_data.n_reps_neg       = rep_accepted_neg;
-        save_data.n_reps_rejected   = n_rejected;
-        save_data.stim_info         = stim_info;
+                if done && trial_idx >= params.minTrials
+                    notify(sprintf('Auto-stop: SNR criterion met after %d trials.', trial_idx));
+                    break
+                end
+            end
 
-        [~, metadata] = session_save_run(save_dir, metadata, ...
-            save_params, save_data);
+        end   % trial loop
 
-        fprintf('Level %d dB complete. %d/%d reps accepted.\n', ...
-            this_level, rep_accepted, params.n_reps);
+        %% --- Save swept data ---
+        save_data.t_ms          = t_epoch;
+        save_data.trials        = all_trials;
+        save_data.average       = mean(all_trials, 1);
+        save_data.fs            = params.fs;
+        save_data.n_trials      = params.trials;
+        save_data.stim_info     = stim_info;
 
-        %% --- Update previous waveforms panel ---
+        [~, metadata] = session_save_run(save_dir, metadata, params, save_data);
+        fprintf('Swept DPOAE complete. %d trials saved.\n', params.trials);
+
         if has_callbacks
-            callbacks.add_prev(t_epoch, final_avg * 1e6, ...
-                this_level, params.frequency_hz);
+            callbacks.add_prev(t_epoch, save_data.average * 1e6, ...
+                params.trials, [params.min_f2_hz params.max_f2_hz]);
         end
-    else
-        fprintf('Level %d dB — no accepted reps, not saved.\n', this_level);
-    end
 
-end   % level loop
+        %% ============================================================
+    case 'discrete'
+        %% ============================================================
+        n_freqs       = length(params.f2_hz);
+        epoch_samples = round(params.duration_ms / 1000 * params.fs);
+        t_epoch       = linspace(0, params.duration_ms, epoch_samples);
+
+        % Generate all frequency stimuli once
+        [stim_out, stim_info] = dpoae_make_stimulus(params, cal);
+        % stim_out.ch1 and .ch2 are now n_freqs x epoch_samples matrices
+
+        % 3-D matrix: trials x samples x frequencies
+        all_trials = zeros(params.trials, epoch_samples, n_freqs);
+
+        for freq_idx = 1:n_freqs
+
+            this_f2 = params.f2_hz(freq_idx);
+
+            % Index into pre-generated stimulus matrix
+            stim_ch1_this = stim_out.ch1(freq_idx, :);
+            stim_ch2_this = stim_out.ch2(freq_idx, :);
+
+            for trial_idx = 1:params.trials
+
+                if has_callbacks && callbacks.should_stop()
+                    fprintf('DPOAE run stopped at freq %d Hz, trial %d.\n', ...
+                        this_f2, trial_idx);
+                    break
+                end
+
+                notify(sprintf('Discrete — F2: %d Hz (%d/%d) — trial %d / %d', ...
+                    this_f2, freq_idx, n_freqs, trial_idx, params.trials));
+
+                %% --- Route to ear ---
+                [ch1, ch2] = routeToEar(stim_ch1_this, stim_ch2_this, params.ear);
+
+                %% --- Play and record ---
+                if stub_mode
+                    epoch = makeStubEpoch(stim_out.ch1, epoch_samples);
+                else
+                    epoch_raw = tdt_play_record(tdt, ch1, ch2, ...
+                        att_ch1, att_ch2, Nreps, throwAway, delayComp);
+                    epoch = epoch_raw(1, 1:epoch_samples);
+                end
+
+                all_trials(trial_idx, :, freq_idx) = epoch;
+
+                %% --- Update display after each trial ---
+                if has_callbacks
+                    avg_so_far = squeeze(mean(all_trials(1:trial_idx, :, freq_idx), 1));
+                    callbacks.update_waveform(t_epoch, avg_so_far * 1e6);
+                    callbacks.update_noise(std(squeeze( ...
+                        all_trials(1:trial_idx, :, freq_idx)), [], 1) * 1e6);
+                    drawnow;
+                end
+
+            end   % trial loop
+
+        end   % freq loop
+
+        %% --- Save discrete data ---
+        save_data.t_ms      = t_epoch;
+        save_data.trials    = all_trials;   % trials x samples x freqs
+        save_data.average   = squeeze(mean(all_trials, 1));  % samples x freqs
+        save_data.f2_hz     = params.f2_hz;
+        save_data.fs        = params.fs;
+        save_data.n_trials  = params.trials;
+        save_data.stim_info = stim_info;
+
+        [~, metadata] = session_save_run(save_dir, metadata, params, save_data);
+        fprintf('Discrete DPOAE complete. %d freqs x %d trials saved.\n', ...
+            n_freqs, params.trials);
+
+        if has_callbacks
+            callbacks.add_prev(t_epoch, save_data.average * 1e6, ...
+                params.trials, params.f2_hz);
+        end
+
+    otherwise
+        error('dpoae_run:unknownStimType', ...
+            'Unknown stim_type: %s', params.stim_type);
+
+end   % switch
 
 %% ================================================================
 %  CLEANUP
@@ -241,7 +205,7 @@ if ~stub_mode
 end
 
 %% ================================================================
-%  NESTED HELPER
+%  NESTED HELPERS
 %% ================================================================
 
     function notify(msg)
@@ -250,5 +214,39 @@ end
             callbacks.update_status(msg);
         end
     end
+
+    function [ch1, ch2] = routeToEar(stim_ch1, stim_ch2, ear)
+        switch lower(ear)
+            case 'left'
+                ch1 = stim_ch1;
+                ch2 = zeros(size(stim_ch1));
+            case 'right'
+                ch1 = zeros(size(stim_ch1));
+                ch2 = stim_ch2;
+            otherwise
+                ch1 = stim_ch1;
+                ch2 = stim_ch2;
+        end
+    end
+
+    function epoch = makeStubEpoch(buffer, n_samples, offset)
+    % offset lets us skip past the lead-in buffer portion
+    if nargin < 3; offset = 0; end
+    start_idx = offset + 1;
+    end_idx   = offset + n_samples;
+    if end_idx <= length(buffer)
+        epoch = buffer(start_idx:end_idx) * 0.1e-6;
+    else
+        epoch = zeros(1, n_samples);
+        available = length(buffer) - offset;
+        if available > 0
+            epoch(1:available) = buffer(start_idx:end) * 0.1e-6;
+        end
+        epoch = epoch + randn(1, n_samples) * 0.02e-6;
+    end
+    end
+
+
+
 
 end

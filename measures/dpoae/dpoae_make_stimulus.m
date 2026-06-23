@@ -1,26 +1,5 @@
-function [stim_out] = dpoae_make_stimulus(params, cal)
-% ABR_MAKE_STIMULUS  Generate ABR stimulus waveform(s).
-%
-% Builds positive and negative polarity buffers with the stimulus at
-% sample 1, zero-padded to the maximum ISI length. Jitter is encoded
-% in isi_samples — pass stim_out.isi_samples(rep) to TDT as nsamps
-% each rep so the inter-stimulus interval varies while stimulus onset
-% stays at sample 1.
-%
-% Inputs:
-%   params    - ABR params struct from abr_default_params
-%   cal       - calibration struct (from cal_load), used to set level
-%
-% Outputs:
-%   stim_out  - struct:
-%     .pos          [max_isi_samples x 1]  positive polarity buffer
-%     .neg          [max_isi_samples x 1]  negative polarity buffer
-%     .isi_samples  [1 x n_reps]           samples to play per rep
-%     .atten_db     scalar                 attenuation applied
-%     .fs           scalar
-%     .n_stim       scalar                 stimulus length in samples
-%
-%   stim_info - struct with diagnostic fields, saved with each run
+function [stim_out, stim_info] = dpoae_make_stimulus(params, cal)
+% DPOAE_MAKE_STIMULUS  Generate DPOAE stimulus waveform(s).
 
 %% --- Input checks ---
 
@@ -32,10 +11,15 @@ fs = params.fs;
 switch lower(params.stim_type)
 
     case 'discrete'
-        [base_stim1, base_stim2, t]  = make_discrete_dp(params, fs);
-
+        [base_stim1, base_stim2, t] = make_discrete_dp(params, fs);
+        stim_info.f2_hz     = params.f2_hz;
+        stim_info.f1_hz     = params.f2_hz ./ params.ratio;
     case 'swept'
-        [base_stim1, base_stim2, t]  = make_swept_dp(params, fs);
+        [base_stim1, base_stim2, t, phi1_inst, phi2_inst] = make_swept_dp(params, fs);
+        stim_info.phi1_inst = phi1_inst;
+        stim_info.phi2_inst = phi2_inst;
+        stim_info.t         = t;
+        stim_info.buffdur   = params.buffdur_ms / 1000;
 
     otherwise
         error('dpoae_make_stimulus:unknownType', ...
@@ -58,15 +42,18 @@ end
 
 %% --- Package output ---
 
-stim_out.stim_ch1         = base_stim1;
-stim_out.stim_ch2         = base_stim2;
+stim_out.ch1         = base_stim1;
+stim_out.ch2         = base_stim2;
 stim_out.t              = t; 
 stim_out.atten_db    = atten_db;
 stim_out.fs          = fs;
 stim_out.n_stim      = n_stim;
 
-%% --- Diagnostic info ---
 
+%% --- Diagnostic info ---
+stim_info.atten_db  = atten_db;
+stim_info.stim_type = params.stim_type;
+stim_info.fs        = fs;
 end
 
 
@@ -74,7 +61,7 @@ end
 %  LOCAL FUNCTIONS
 %% =========================================================
 
-function [y1, y2, t] = make_swept_dp(params, fs)
+function [y1, y2, t, phi1_inst, phi2_inst] = make_swept_dp(params, fs)
 
     if params.sweepDirection == -1 % downsweep
         f_start = params.max_f2_hz;

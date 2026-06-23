@@ -23,8 +23,8 @@ cfg = config_load();
 
 %% --- Connect with TDT
 
-tdt = tdt_init(cfg, 'acoustic'); 
-%tdt = []; 
+%tdt = tdt_init(cfg, 'acoustic'); 
+tdt = []; 
 
 %% --- Load calibration ---
 
@@ -210,6 +210,13 @@ disF2list = makeField(ctrlGrid, 'F2 List', 2, 5, 'edit', mat2str(params.f2_hz), 
 levelf1 = makeField(ctrlGrid, 'F1 Level (dB)', 1, 2, 'edit', string(params.level_f1_dB)); 
 levelf2 = makeField(ctrlGrid, 'F2 Level (dB)', 2, 2, 'edit', string(params.level_f2_dB)); 
 
+autoStopCheck = uicheckbox(ctrlGrid, ...
+    'Text',     'Auto-stop', ...
+    'Value',    params.auto_stop, ...
+    'FontSize', 11);
+autoStopCheck.Layout.Row    = 2;
+autoStopCheck.Layout.Column = 3;
+
 runBtn = uibutton(ctrlGrid, ...
     'Text',            '▶  Run', ...
     'BackgroundColor', [0.11 0.62 0.46], ...
@@ -270,7 +277,7 @@ waveGrid.Padding         = [8 8 8 8];
 waveGrid.BackgroundColor = 'w';
 
 waveAx = uiaxes(waveGrid, ...
-    'XLim',   [500, 10000], ...
+    'XLim',   [params.min_f2_hz, params.max_f2_hz], ...
     'YLim',   params.amplitude_window_dB, ...
     'Box',    'on', ...
     'FontSize', 11);
@@ -291,11 +298,27 @@ plotPanel = uipanel(plotGrid, ...
 plotPanel.Layout.Row    = 1;
 plotPanel.Layout.Column = 2;
 
-plotGrid = uigridlayout(plotPanel, [1 1]);
-plotGrid.Padding         = [8 8 8 8];
-plotGrid.BackgroundColor = 'w';
+plotOptionsGrid = uigridlayout(plotPanel, [4 2]);
+plotOptionsGrid.RowHeight    = {40, 40, '1x',24};
+plotOptionsGrid.ColumnWidth = {'1x', '1x'}; 
+plotOptionsGrid.Padding      = [8 8 8 8];
+plotOptionsGrid.RowSpacing   = 4;
+plotOptionsGrid.BackgroundColor = 'w';
 
+viz_xminField = makeField(plotOptionsGrid, 'X Min (Hz)', 1, 1, 'edit', ...
+    string(params.min_f2_hz));
+viz_xmaxField = makeField(plotOptionsGrid, 'X Max (Hz)', 1, 2, 'edit', ...
+    string(params.max_f2_hz));
+viz_yminField = makeField(plotOptionsGrid, 'Y Min (dB)', 2, 1, 'edit', ...
+    string(params.amplitude_window_dB(1)));
+viz_ymaxField = makeField(plotOptionsGrid, 'Y Max (dB)', 2, 2, 'edit', ...
+    string(params.amplitude_window_dB(2)));
 
+applyVizBtn = uibutton(plotOptionsGrid, ...
+    'Text',            'Apply', ...
+    'ButtonPushedFcn', @(~,~) updateVizWindow());
+applyVizBtn.Layout.Row    = 4;
+applyVizBtn.Layout.Column = [1 2];
 
 % TODO: Add norms toggle
 
@@ -316,14 +339,27 @@ plotGrid.BackgroundColor = 'w';
             for i = 1:length(discrete_fields)
                 discrete_fields{i}.Enable = onoff(~is_swept);
             end
+    end
+
+% Call once to set initial state
+onStimTypeChanged();
+
+    function updateVizWindow()
+        xmin = str2double(viz_xminField.Value);
+        xmax = str2double(viz_xmaxField.Value);
+        ymin = str2double(viz_yminField.Value);
+        ymax = str2double(viz_ymaxField.Value);
+        if ~isnan(xmin) && ~isnan(xmax) && xmax > xmin
+            waveAx.XLim = [xmin xmax];
         end
-    
-    % Call once to set initial state
-    onStimTypeChanged();
+        if ~isnan(ymin) && ~isnan(ymax) && ymax > ymin
+            waveAx.YLim = [ymin ymax];
+        end
+    end
 
     function onRun()
         params = readParamsFromGui();
-        err    = abr_validate_params(params);
+        err    = dpoae_validate_params(params);
         if ~isempty(err)
             uialert(fig, err, 'Invalid parameters');
             return
@@ -342,7 +378,7 @@ plotGrid.BackgroundColor = 'w';
         callbacks.update_title = @(msg) setWaveTitle(msg);
 
         try
-            metadata = abr_run(params, save_dir, metadata, tdt, transducer_cal, callbacks);
+            metadata = dpoae_run(params, save_dir, metadata, tdt, transducer_cal, callbacks);
         catch e
             if ~isempty(tdt)
                 tdt_close(tdt); 
@@ -407,40 +443,56 @@ plotGrid.BackgroundColor = 'w';
 %% ================================================================
 
     function p = readParamsFromGui()
-        p = project_load_defaults('dpoae', metadata.project);
-        p.stim_type    = lower(strrep(stimTypeDrop.Value, ' ', ''));
-        p.frequency_hz = str2double(freqField.Value);
-        p.ear          = lower(earDrop.Value);
-        p.polarity     = lower(polarityDrop.Value);
-        p.levels_dbspl = str2num(levelsField.Value); %#ok<ST2NM>
-        p.n_reps       = round(str2double(repsField.Value));
-        p.rate_hz      = str2double(rateField.Value);
-        p.duration_cyc  = str2double(durField.Value);
-        p.rise_fall_cyc = str2double(riseField.Value);
+    p = project_load_defaults('dpoae', metadata.project);
 
-        p.viz_window_ms       = [str2double(viz_startField.Value) ...
-            str2double(viz_endField.Value)];
-        p.amplitude_window_uV = [-str2double(viz_scaleField.Value) ...
-            str2double(viz_scaleField.Value)];
-        p.viz_polarity        = viz_polarityDrop.Value;
-        % need to validate levels are a reasonable range and freq are
-        % doable
+    % --- Shared params ---
+    p.stim_type    = lower(stimTypeDrop.Value);
+    p.ear          = lower(earDrop.Value);
+    p.ratio        = str2double(freqRatio.Value);
+    p.level_f1_dB  = str2double(levelf1.Value);
+    p.level_f2_dB  = str2double(levelf2.Value);
+    p.auto_stop = autoStopCheck.Value;
 
-        switch earCalDrop.Value
-            case 'None'
-                p.apply_ear_cal = false;
-            case 'File...'
-                [f, pth] = uigetfile('*.mat', 'Select ear cal file');
-                if isequal(f, 0)
-                    p.apply_ear_cal = false;
-                else
-                    p.apply_ear_cal = true;
-                    p.ear_cal_file  = fullfile(pth, f);
-                end
-            otherwise
-                p.apply_ear_cal = true;
-                p.ear_cal_file  = '';
+    % --- Swept-specific params ---
+    if strcmp(p.stim_type, 'swept')
+        p.min_f2_hz    = str2double(sweepf2min.Value);
+        p.max_f2_hz    = str2double(sweepf2max.Value);
+        p.speed        = str2double(sweepRate.Value);
+        p.scale        = lower(sweepType.Value);   % 'log' or 'linear'
+        p.buffdur_ms   = str2double(sweepBuffDur.Value);
+        switch sweepDir.Value
+            case 'Up';   p.sweepDirection =  1;
+            case 'Down'; p.sweepDirection = -1;
         end
+
+        % --- Discrete-specific params ---
+    else
+        p.duration_ms  = str2double(disDuration.Value);
+        p.f2_hz        = str2num(disF2list.Value); %#ok<ST2NM>
+    end
+
+    % --- Viz params (display only, not passed to dpoae_run) ---
+    p.viz_xlim = [str2double(viz_xminField.Value) ...
+                  str2double(viz_xmaxField.Value)];
+    p.amplitude_window_dB = [str2double(viz_yminField.Value) ...
+                              str2double(viz_ymaxField.Value)];
+
+    % Get the calibration things:
+    % switch earCalDrop.Value
+    %     case 'None'
+    %         p.apply_ear_cal = false;
+    %     case 'File...'
+    %         [f, pth] = uigetfile('*.mat', 'Select ear cal file');
+    %         if isequal(f, 0)
+    %             p.apply_ear_cal = false;
+    %         else
+    %             p.apply_ear_cal = true;
+    %             p.ear_cal_file  = fullfile(pth, f);
+    %             end
+    %         otherwise
+    %             p.apply_ear_cal = true;
+    %             p.ear_cal_file  = '';
+    % end
     end
 
     function updateStatus(msg)
@@ -499,15 +551,6 @@ function updateWaveform(t, avg_combined, avg_pos, avg_neg)
                 set(avgLine_neg, 'XData', NaN, 'YData', NaN);
         end
 
-    end
-
-    function updateVizWindow()
-        start_ms = str2double(viz_startField.Value);
-        end_ms   = str2double(viz_endField.Value);
-        if ~isnan(start_ms) && ~isnan(end_ms) && end_ms > start_ms
-            waveAx.XLim = [start_ms end_ms];
-            prevAx.XLim = [start_ms end_ms];
-        end
     end
 
  
