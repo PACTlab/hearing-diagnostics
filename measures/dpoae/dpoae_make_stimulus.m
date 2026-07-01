@@ -1,4 +1,4 @@
-function [stim_out, stim_info] = dpoae_make_stimulus(params, cal)
+function [stim_out, stim_info] = dpoae_make_stimulus(params)
 % DPOAE_MAKE_STIMULUS  Generate DPOAE stimulus waveform(s).
 
 %% --- Input checks ---
@@ -30,28 +30,16 @@ end
 % add a standard delay so stim doesn't start at sample 1
 n_stim = numel(base_stim1); 
 
-%% --- Apply calibration / level scaling ---
-if ~isempty(cal)
-    [base_stim1, atten_db] = cal_apply_transducer(base_stim1, cal, ...
-        params.frequency_hz, params.levels_dbspl);
-else
-    atten_db = NaN;
-    warning('abr_make_stimulus:noCal', ...
-        'No calibration provided. Stimulus amplitude is uncalibrated.');
-end
-
 %% --- Package output ---
 
 stim_out.ch1         = base_stim1;
 stim_out.ch2         = base_stim2;
 stim_out.t              = t; 
-stim_out.atten_db    = atten_db;
 stim_out.fs          = fs;
 stim_out.n_stim      = n_stim;
 
 
 %% --- Diagnostic info ---
-stim_info.atten_db  = atten_db;
 stim_info.stim_type = params.stim_type;
 stim_info.fs        = fs;
 end

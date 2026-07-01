@@ -23,8 +23,8 @@ cfg = config_load();
 
 %% --- Connect with TDT
 
-%tdt = tdt_init(cfg, 'acoustic'); 
-tdt = []; 
+tdt = tdt_init(cfg, 'acoustic'); 
+%tdt = []; 
 
 %% --- Load calibration ---
 
@@ -40,7 +40,10 @@ if ~isempty(cfg.calibration.active_transducer_file)
 end
 
 % Ear cal starts empty — loaded later if run
-ear_cal = [];
+[cal_ch1, cal_ch2] = ear_cal_load(save_dir); 
+ 
+ear_cal.ch1 = cal_ch1.run.data; 
+ear_cal.ch2 = cal_ch2.run.data; 
 
 %% --- Default params ---
 % if lab_default project, use the params in this folder, otherwise, use the
@@ -280,15 +283,18 @@ waveAx = uiaxes(waveGrid, ...
     'XLim',   [params.min_f2_hz, params.max_f2_hz], ...
     'YLim',   params.amplitude_window_dB, ...
     'Box',    'on', ...
-    'FontSize', 11);
+    'FontSize', 11, ...
+    'XScale','log');
 waveAx.Layout.Row    = 1;
 waveAx.Layout.Column = 1;
 xlabel(waveAx, 'Frequency (Hz)');
 ylabel(waveAx, 'Amplitude (dB)');
 hold(waveAx, 'on');
 
-avgLine     = plot(waveAx, NaN, NaN, 'LineWidth', 1.8);   % primary line
-avgLine_neg = plot(waveAx, NaN, NaN, 'LineWidth', 1.4);   % negative polarity line
+avgLineDP     = plot(waveAx, NaN, NaN, 'LineWidth', 1.8);   % primary line
+avgLineNF     = plot(waveAx, NaN, NaN, 'LineWidth', 1.8); 
+avgLineF1     = plot(waveAx, NaN, NaN, 'LineWidth', 1.8);   % primary line
+avgLineF2     = plot(waveAx, NaN, NaN, 'LineWidth', 1.8); 
 
 % Plotting Panel 
 plotPanel = uipanel(plotGrid, ...
@@ -371,14 +377,14 @@ onStimTypeChanged();
 
         % Build callbacks
         callbacks.update_status   = @(msg)           updateStatus(msg);
-        callbacks.update_waveform = @(t, avg_combined, avg_pos, avg_neg) ...
-            updateWaveform(t, avg_combined, avg_pos, avg_neg);        callbacks.update_noise    = @(rms)           updateNoise(rms);
-        callbacks.add_prev = @(t, avg, lv, f) addPrevWaveform(t, avg, lv, f);
+        callbacks.update_waveform = @(result) ...
+            updateWaveform(result);        
+        callbacks.update_noise    = @(rms)           updateNoise(rms);
         callbacks.should_stop     = @()              state.stop_req;
         callbacks.update_title = @(msg) setWaveTitle(msg);
 
         try
-            metadata = dpoae_run(params, save_dir, metadata, tdt, transducer_cal, callbacks);
+            metadata = dpoae_run(params, save_dir, metadata, tdt, ear_cal, callbacks);
         catch e
             if ~isempty(tdt)
                 tdt_close(tdt); 
@@ -392,7 +398,7 @@ onStimTypeChanged();
 
         state.running = false;
         setRunning(false);
-        wavePanel.Title = 'Running average';
+        wavePanel.Title = 'Average Response';
         updateStatus(sprintf('Done. Total runs this session: %d', ...
             metadata.total_runs));
     end
@@ -425,12 +431,12 @@ onStimTypeChanged();
             'DefaultOption', 2, ...
             'CancelOption',  2);
         if strcmp(sel, 'Quit')
-            if ~isempty(launcher_fig) && isvalid(launcher_fig)
-                % Re-enable launcher buttons
-                buttons = findobj(launcher_fig, 'Type', 'Button');
-                set(buttons, 'Enable', 'on');
-                % Keep placeholders disabled
-            end
+            % if ~isempty(launcher_fig) && isvalid(launcher_fig)
+            %     % Re-enable launcher buttons
+            %     buttons = findobj(launcher_fig, 'Type', 'Button');
+            %     set(buttons, 'Enable', 'on');
+            %     % Keep placeholders disabled
+            % end
             delete(fig);
             if ~isempty(tdt)
                 tdt_close(tdt);
@@ -517,44 +523,27 @@ onStimTypeChanged();
         end
     end
 
-function updateWaveform(t, avg_combined, avg_pos, avg_neg)
+function updateWaveform(result)
 
-       % Baseline correct each
-        avg_combined = baselineCorrect(avg_combined, t);
-        avg_pos      = baselineCorrect(avg_pos, t);
-        avg_neg      = baselineCorrect(avg_neg, t);
+    set(avgLineDP, ...
+    'XData', result.freq_f2, 'YData', result.dp_amp_dB);
 
-        % Pick which average to display based on polarity dropdown
-        switch viz_polarityDrop.Value
-            case 'Combined'
-                set(avgLine, ...
-                    'XData', t, 'YData', avg_combined, ...
-                    'Color', colors.combined);
-                set(avgLine_neg, 'XData', NaN, 'YData', NaN);
-            case 'Separated'
-                set(avgLine, ...
-                    'XData', t, 'YData', avg_pos, ...
-                    'Color', colors.positive);
-                set(avgLine_neg, ...
-                    'XData', t, 'YData', avg_neg, ...
-                    'Color', colors.negative);
-            case 'Positive only'
-                set(avgLine, ...
-                    'XData', t, 'YData', avg_pos, ...
-                    'Color', colors.positive);
-                set(avgLine_neg, 'XData', NaN, 'YData', NaN);
+    set(avgLineNF, ...
+        'XData', result.freq_f2, 'YData', result.noise_amp_dB); 
+    
+    set(avgLineF1, ...
+        'XData', result.freq_f1, 'YData', result.f1_amp_dB); 
+    
+    set(avgLineF2, ...
+        'XData', result.freq_f2, 'YData', result.f2_amp_dB);
 
-            case 'Negative only'
-                set(avgLine, ...
-                    'XData', t, 'YData', avg_neg, ...
-                    'Color', colors.negative);
-                set(avgLine_neg, 'XData', NaN, 'YData', NaN);
-        end
+    
+    drawnow; 
+end
 
-    end
 
  
-end   % abr_gui
+end   
 
 %% ================================================================
 %  LOCAL FUNCTIONS

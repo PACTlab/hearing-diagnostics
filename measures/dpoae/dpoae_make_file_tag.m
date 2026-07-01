@@ -14,7 +14,7 @@ end
 level_f1 = params.level_f1_dB;
 level_f2 = params.level_f2_dB;
 
-if isscalar(levels)
+if isscalar(level_f1)
     level1_str = sprintf('%ddB', round(level_f1));
     level2_str = sprintf('%ddB', round(level_f2));
 end

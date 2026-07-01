@@ -1,4 +1,4 @@
-function [filepath, metadata] = session_save_run(save_dir, metadata, params, data)
+function [filepath, metadata] = session_save_run(save_dir, metadata, params, data, result)
 % SESSION_SAVE_RUN  Save a single run file and update session metadata.
 %
 % This is the main save function called by measure GUIs after each
@@ -54,7 +54,12 @@ end
 
 run.params = params;
 run.data   = data;
-run.result = struct();
+
+if nargin < 5
+    run.result = struct();
+else
+    run.result = result;
+end
 
 %% --- Increment run counter ---
 

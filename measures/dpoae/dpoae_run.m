@@ -1,4 +1,4 @@
-function metadata = dpoae_run(params, save_dir, metadata, tdt, cal, callbacks)
+function metadata = dpoae_run(params, save_dir, metadata, tdt, ear_cal, callbacks)
 % DPOAE_RUN  Run DPOAE acquisition.
 %
 % Inputs:
@@ -25,14 +25,10 @@ if stub_mode
         'TDT handle is empty — running in stub mode with fake data.');
 end
 
-%% --- Attenuator settings ---
-att_ch1 = 30;
-att_ch2 = 30;  % TODO: derive from transducer cal
-
 %% --- Shared TDT play/record args ---
 Nreps      = 1;
 throwAway  = 0;
-delayComp  = 0;
+delayComp  = 1;
 
 %% ================================================================
 %  BRANCH: swept vs discrete
@@ -45,13 +41,18 @@ switch lower(params.stim_type)
     %% ============================================================
 
         %% --- Generate stimulus ---
-        [stim_out, stim_info] = dpoae_make_stimulus(params, cal);
+        [stim_out, stim_info] = dpoae_make_stimulus(params);
 
         %% --- Route to ear ---
-        [stim_ch1, stim_ch2] = routeToEar(stim_out.ch1, stim_out.ch2, params.ear);
-        
-        epoch_samples = round(params.buffdur_ms / 1000 * params.fs);
-        t_epoch       = linspace(0, params.buffdur_ms, epoch_samples);
+        stim_ch1 = stim_out.ch1; 
+        stim_ch2 = stim_out.ch2; 
+
+        % apply calibration and set attn
+        [stim_ch1, att_ch1] = ear_cal_apply(stim_ch1, ear_cal.ch1, params.level_f1_dB);
+        [stim_ch2, att_ch2] = ear_cal_apply(stim_ch2, ear_cal.ch2, params.level_f2_dB);
+
+        epoch_samples = numel(stim_ch1);
+        t_epoch       = stim_info.t; 
 
         % Accumulate trials: rows = trials, cols = samples
         all_trials = zeros(params.trials, epoch_samples);
@@ -103,13 +104,9 @@ switch lower(params.stim_type)
         save_data.n_trials      = params.trials;
         save_data.stim_info     = stim_info;
 
-        [~, metadata] = session_save_run(save_dir, metadata, params, save_data);
+        [~, metadata] = session_save_run(save_dir, metadata, params, save_data, result);
         fprintf('Swept DPOAE complete. %d trials saved.\n', params.trials);
 
-        if has_callbacks
-            callbacks.add_prev(t_epoch, save_data.average * 1e6, ...
-                params.trials, [params.min_f2_hz params.max_f2_hz]);
-        end
 
         %% ============================================================
     case 'discrete'
@@ -119,7 +116,7 @@ switch lower(params.stim_type)
         t_epoch       = linspace(0, params.duration_ms, epoch_samples);
 
         % Generate all frequency stimuli once
-        [stim_out, stim_info] = dpoae_make_stimulus(params, cal);
+        [stim_out, stim_info] = dpoae_make_stimulus(params);
         % stim_out.ch1 and .ch2 are now n_freqs x epoch_samples matrices
 
         % 3-D matrix: trials x samples x frequencies
@@ -159,13 +156,13 @@ switch lower(params.stim_type)
                 all_trials(trial_idx, :, freq_idx) = epoch;
 
                 %% --- Update display after each trial ---
-                if has_callbacks
-                    avg_so_far = squeeze(mean(all_trials(1:trial_idx, :, freq_idx), 1));
-                    callbacks.update_waveform(t_epoch, avg_so_far * 1e6);
-                    callbacks.update_noise(std(squeeze( ...
-                        all_trials(1:trial_idx, :, freq_idx)), [], 1) * 1e6);
-                    drawnow;
-                end
+                % if has_callbacks
+                %     avg_so_far = squeeze(mean(all_trials(1:trial_idx, :, freq_idx), 1));
+                %     callbacks.update_waveform(t_epoch, avg_so_far * 1e6);
+                %     callbacks.update_noise(std(squeeze( ...
+                %         all_trials(1:trial_idx, :, freq_idx)), [], 1) * 1e6);
+                %     drawnow;
+                % end
 
             end   % trial loop
 
@@ -184,10 +181,6 @@ switch lower(params.stim_type)
         fprintf('Discrete DPOAE complete. %d freqs x %d trials saved.\n', ...
             n_freqs, params.trials);
 
-        if has_callbacks
-            callbacks.add_prev(t_epoch, save_data.average * 1e6, ...
-                params.trials, params.f2_hz);
-        end
 
     otherwise
         error('dpoae_run:unknownStimType', ...

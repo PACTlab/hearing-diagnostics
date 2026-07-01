@@ -26,7 +26,7 @@ if stub_mode
         'Running in stub mode — fake mic data will be used.');
 end
 
-notify('Starting ear cal sweep...');
+disp('Starting ear cal sweep...');
 
 %% --- Build frequency vector ---
 
@@ -58,7 +58,7 @@ for fi = 1:n_freqs
     end
 
     this_freq = freqs(fi);
-    notify(sprintf('Frequency %d / %d — %.0f Hz', fi, n_freqs, this_freq));
+    sprintf('Frequency %d / %d — %.0f Hz', fi, n_freqs, this_freq);
 
     % Generate tone with onset/offset ramp
     t      = (0:n_tone_samps-1)' / params.fs;
@@ -82,13 +82,17 @@ for fi = 1:n_freqs
             case 'ch1'
                 stim_ch1 = tone;
                 stim_ch2 = zeros_buf;
+                att1 = params.attn; 
+                att2 = 120; 
             case 'ch2'
                 stim_ch1 = zeros_buf;
                 stim_ch2 = tone;
+                att1 = 120; 
+                att2 = params.attn; 
         end
         raw       = tdt_play_record(tdt, stim_ch1, stim_ch2, ...
-            0, 0, 1, 1, true);
-        recording = raw(1, :)';
+            att1, att2, 1, 0, true);
+        recording = raw(1, 1:numel(stim_ch1))';
     end
 
     % RMS over steady state
@@ -107,9 +111,10 @@ for fi = 1:n_freqs
     end
 
     % Convert to dB SPL
-    mic_pa_per_v   = 10^(transducer.mic.sensitivity_dbv / 20);
+    gain = 1; 
+    mic_pa_per_v   = 1/(gain * transducer.mic.sensitivity_mVperPa/1e3);
     pressure_pa    = rms_values(fi) / mic_pa_per_v;
-    db_spl(fi)     = 20 * log10(pressure_pa / 20e-6);
+    db_spl(fi)     = 20 * log10(pressure_pa / 20e-6) + params.attn;
 
     % Update plot
     if has_callbacks

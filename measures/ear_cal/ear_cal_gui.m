@@ -296,10 +296,10 @@ progressLbl.Layout.Column = 1;
     end
 
     function onClose()
-        if state.running
-            uialert(fig, 'Stop before closing.', 'Cannot close');
-            return
-        end
+        % if state.running
+        %     uialert(fig, 'Stop before closing.', 'Cannot close');
+        %     return
+        % end
         if ~isempty(tdt)
             tdt_close(tdt);
         end

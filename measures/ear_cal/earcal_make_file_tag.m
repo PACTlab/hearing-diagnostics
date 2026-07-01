@@ -1,4 +1,4 @@
-function tag = earcal_make_file_tag(params)
-% EARCAL_MAKE_FILE_TAG  No frequency or level tag needed for ear cal.
-tag = '';
+function tag = ear_cal_make_file_tag(params)
+% EAR_CAL_MAKE_FILE_TAG  Filename segment for ear cal.
+tag = sprintf(params.ear);   % 'ch1' or 'ch2'
 end

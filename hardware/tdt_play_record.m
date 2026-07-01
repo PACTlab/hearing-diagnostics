@@ -34,7 +34,7 @@ else
 end
 
 
-n_samps = max(numel(stim_ch1), numel(stim_ch1)) + delay; 
+n_samps = max(numel(stim_ch1), numel(stim_ch2)) + delay; 
 
 
 % Write stimulus to circuit buffers
@@ -52,7 +52,7 @@ invoke(tdt.RZ, 'SetTagVal', 'nsamps', n_samps);
 pause(0.05);
 
 % Initialize empty data storage
-data = zeros(Nreps, n_samps); 
+data = zeros(Nreps, n_samps-delay); 
 
 for n = 1:(Nreps + throwAway)
     
