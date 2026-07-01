@@ -192,22 +192,27 @@ end
 %  CALLBACKS
 %% ================================================================
     function launchABR()
+        metadata = load_or_init_metadata(save_dir);
         abr_gui(save_dir, metadata);
     end
 
     function launchEFR()
+         metadata = load_or_init_metadata(save_dir);
         efr_gui(save_dir, metadata); 
     end
 
     function launchDPOAE()
+         metadata = load_or_init_metadata(save_dir);
         dpoae_gui(save_dir, metadata); 
     end
 
     function launchEarCal()
+         metadata = load_or_init_metadata(save_dir);
         ear_cal_gui(save_dir, metadata);
     end
 
     function launchTransducer()
+         metadata = load_or_init_metadata(save_dir);
         transducer_check_gui(save_dir, metadata);
     end
 
@@ -285,6 +290,19 @@ end
             timerLbl.Text = sprintf('%02d:%02d', mins, secs);
         end
     end
+
+function metadata = load_or_init_metadata(save_dir)
+    metadata_file = fullfile(save_dir, 'session_metadata.mat');
+    if exist(metadata_file, 'file')
+        loaded   = load(metadata_file, 'metadata');
+        metadata = loaded.metadata;
+        fprintf('Loaded existing session: %d runs so far.\n', metadata.n_runs);
+    else
+        metadata = session_init(save_dir);
+        save(metadata_file, 'metadata');
+        fprintf('New session initialized.\n');
+    end
+end
 
 end   % hearing_lab_gui
 
