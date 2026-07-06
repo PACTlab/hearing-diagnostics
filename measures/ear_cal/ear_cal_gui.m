@@ -78,8 +78,8 @@ ctrlPanel = uipanel(mainGrid, ...
 ctrlPanel.Layout.Row    = 2;
 ctrlPanel.Layout.Column = 1;
 
-ctrlGrid = uigridlayout(ctrlPanel, [1 6]);
-ctrlGrid.ColumnWidth     = {'2x', '1x', '1x', 80, 80, 80};
+ctrlGrid = uigridlayout(ctrlPanel, [1 7]);
+ctrlGrid.ColumnWidth     = {'2x', '1x', '1x', '1x', 80, 80, 80};
 ctrlGrid.Padding         = [8 6 8 6];
 ctrlGrid.ColumnSpacing   = 8;
 ctrlGrid.BackgroundColor = 'w';
@@ -90,17 +90,24 @@ transducerDrop = uidropdown(ctrlGrid, 'Items', transducer_names);
 transducerDrop.Layout.Row    = 1;
 transducerDrop.Layout.Column = 1;
 
+% Ear dropdown
+earDrop = uidropdown(ctrlGrid, ...
+        'Items', {'Right', 'Left'}, ...
+        'Value', params.ear);
+earDrop.Layout.Row    = 1;
+earDrop.Layout.Column = 2;
+
 % Channel dropdown
 channelDrop = uidropdown(ctrlGrid, ...
     'Items', {'Ch 1 (Left)', 'Ch 2 (Right)', 'Both'});
 channelDrop.Layout.Row    = 1;
-channelDrop.Layout.Column = 2;
+channelDrop.Layout.Column = 3;
 
 % Method dropdown
 methodDrop = uidropdown(ctrlGrid, ...
     'Items', {'Automated', 'Manual'});
 methodDrop.Layout.Row    = 1;
-methodDrop.Layout.Column = 3;
+methodDrop.Layout.Column = 4;
 
 % Run/Stop/Load buttons
 runBtn = uibutton(ctrlGrid, ...
@@ -110,7 +117,7 @@ runBtn = uibutton(ctrlGrid, ...
     'FontWeight',      'bold', ...
     'ButtonPushedFcn', @(~,~) onRun());
 runBtn.Layout.Row    = 1;
-runBtn.Layout.Column = 4;
+runBtn.Layout.Column = 5;
 
 stopBtn = uibutton(ctrlGrid, ...
     'Text',            '■  Stop', ...
@@ -120,18 +127,18 @@ stopBtn = uibutton(ctrlGrid, ...
     'Enable',          'off', ...
     'ButtonPushedFcn', @(~,~) onStop());
 stopBtn.Layout.Row    = 1;
-stopBtn.Layout.Column = 5;
+stopBtn.Layout.Column = 6;
 
 loadBtn = uibutton(ctrlGrid, ...
     'Text',            'Load existing', ...
     'ButtonPushedFcn', @(~,~) onLoadExisting());
 loadBtn.Layout.Row    = 1;
-loadBtn.Layout.Column = 6;
+loadBtn.Layout.Column = 7;
 
 %% --- Row 3: Status ---
 
 statusBar = uilabel(mainGrid, ...
-    'Text',      'Ready. Probe in ear before starting.', ...
+    'Text',      'Ready. Place probe in ear before starting.', ...
     'FontSize',  11, ...
     'FontColor', [0.4 0.4 0.4]);
 statusBar.Layout.Row    = 3;
@@ -154,10 +161,11 @@ plotGrid.BackgroundColor = 'w';
 axResp = uiaxes(plotGrid, 'XScale', 'log', 'Box', 'on', 'FontSize', 10);
 axResp.Layout.Row    = 1;
 axResp.Layout.Column = 1;
-xlabel(axResp, 'Frequency (Hz)');
+xlabel(axResp, 'Frequency (kHz)');
 ylabel(axResp, 'Level (dB SPL)');
 title(axResp, 'Measured response');
-xlim(axResp, [params.freq_min_hz params.freq_max_hz]);
+xlim(axResp, [params.freq_min_hz/1e3 params.freq_max_hz/1e3]);
+ylim(axResp, [40, 120])
 hold(axResp, 'on');
 grid(axResp, 'on');
 
@@ -172,10 +180,10 @@ legend(axResp, 'Location', 'best');
 axFilt = uiaxes(plotGrid, 'XScale', 'log', 'Box', 'on', 'FontSize', 10);
 axFilt.Layout.Row    = 1;
 axFilt.Layout.Column = 2;
-xlabel(axFilt, 'Frequency (Hz)');
+xlabel(axFilt, 'Frequency (kHz)');
 ylabel(axFilt, 'Gain (dB)');
 title(axFilt, 'Correction filter response');
-xlim(axFilt, [params.freq_min_hz params.freq_max_hz]);
+xlim(axFilt, [params.freq_min_hz/1e3 params.freq_max_hz/1e3]);
 hold(axFilt, 'on');
 grid(axFilt, 'on');
 
@@ -211,7 +219,8 @@ progressLbl.Layout.Column = 1;
             transducers, transducerDrop.Value);
 
         params.method = lower(methodDrop.Value);
-        params.ear    = getChannelParam(channelDrop.Value);
+        params.channel    = getChannelParam(channelDrop.Value);
+        params.ear = getEarParam(earDrop.Value); 
 
         state.running  = true;
         state.stop_req = false;
@@ -221,10 +230,10 @@ progressLbl.Layout.Column = 1;
         cbs.should_stop   = @()    state.stop_req;
 
         try
-            if strcmp(params.ear, 'both')
+            if strcmp(params.channel, 'both')
                 % Ch1 first
                 params_ch1     = params;
-                params_ch1.ear = 'ch1';
+                params_ch1.channel = 'ch1';
                 cbs.update_plot = @(f, db) updatePlot(f, db, 'ch1');
                 [res_ch1, metadata] = ear_cal_run(params_ch1, ...
                     selected_transducer, tdt, save_dir, metadata, cbs);
@@ -233,7 +242,7 @@ progressLbl.Layout.Column = 1;
                 if ~state.stop_req
                     % Ch2 second
                     params_ch2     = params;
-                    params_ch2.ear = 'ch2';
+                    params_ch2.channel = 'ch2';
                     cbs.update_plot = @(f, db) updatePlot(f, db, 'ch2');
                     [res_ch2, metadata] = ear_cal_run(params_ch2, ...
                         selected_transducer, tdt, save_dir, metadata, cbs);
@@ -242,10 +251,10 @@ progressLbl.Layout.Column = 1;
                 end
 
             else
-                cbs.update_plot = @(f, db) updatePlot(f, db, params.ear);
+                cbs.update_plot = @(f, db) updatePlot(f, db, params.channel);
                 [current_result, metadata] = ear_cal_run(params, ...
                     selected_transducer, tdt, save_dir, metadata, cbs);
-                plotFilter(current_result, params.ear);
+                plotFilter(current_result, params.channel);
             end
 
         catch e
@@ -286,7 +295,7 @@ progressLbl.Layout.Column = 1;
         result.filter_b     = loaded.run.data.filter_b;
         result.frequency_hz = loaded.run.data.frequency_hz;
         result.db_spl       = loaded.run.data.db_spl;
-        result.channel      = loaded.run.params.ear;
+        result.channel      = loaded.run.params.channel;
 
         updatePlot(result.frequency_hz, result.db_spl, result.channel);
         plotFilter(result, result.channel);
@@ -321,9 +330,9 @@ progressLbl.Layout.Column = 1;
     function updatePlot(freqs, db_spl, channel)
         switch channel
             case 'ch1'
-                set(ch1_resp, 'XData', freqs, 'YData', db_spl);
+                set(ch1_resp, 'XData', freqs/1e3, 'YData', db_spl);
             case 'ch2'
-                set(ch2_resp, 'XData', freqs, 'YData', db_spl);
+                set(ch2_resp, 'XData', freqs/1e3, 'YData', db_spl);
         end
         n = length(freqs);
         progressLbl.Text = sprintf('%d / %d frequencies complete', ...
@@ -338,9 +347,9 @@ progressLbl.Layout.Column = 1;
 
         switch channel
             case 'ch1'
-                set(ch1_filt, 'XData', W, 'YData', H_db);
+                set(ch1_filt, 'XData', W/1e3, 'YData', H_db);
             case 'ch2'
-                set(ch2_filt, 'XData', W, 'YData', H_db);
+                set(ch2_filt, 'XData', W/1e3, 'YData', H_db);
         end
         drawnow;
     end
@@ -374,6 +383,13 @@ function ch = getChannelParam(dropdown_value)
         case 'Ch 1 (Left)';  ch = 'ch1';
         case 'Ch 2 (Right)'; ch = 'ch2';
         otherwise;           ch = 'both';
+    end
+end
+
+function ear = getEarParam(ear_value)
+    switch ear_value
+        case 'Right'; ear = 'Right';
+        case 'Left'; ear = 'Left';
     end
 end
 

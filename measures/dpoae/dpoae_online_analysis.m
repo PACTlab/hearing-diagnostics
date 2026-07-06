@@ -57,36 +57,36 @@ freq_dp = 2 .* freq_f1 - freq_f2;
 
 %% --- Artifact rejection across trials ---
 
-coeffs_ar = zeros(n_trials, npoints, 2);
-
-for trial_idx = 1:n_trials
-    epoch = trials_so_far(trial_idx, :);
-    for k = 1:npoints
-        win    = find(t > (t_freq(k) - windowdur/2) & ...
-                      t < (t_freq(k) + windowdur/2));
-        taper  = hanning(numel(win))';
-        model  = [cos(phi_dp_inst(win)) .* taper;
-                 -sin(phi_dp_inst(win)) .* taper];
-        resp   = epoch(win) .* taper;
-        coeffs_ar(trial_idx, k, :) = model' \ resp';
-    end
-end
-
-oae_ar        = abs(complex(coeffs_ar(:,:,1), coeffs_ar(:,:,2)));
-median_oae_ar = median(oae_ar, 1);
-std_oae_ar    = std(oae_ar, 0, 1);
+% coeffs_ar = zeros(n_trials, npoints, 2);
+% 
+% for trial_idx = 1:n_trials
+%     epoch = trials_so_far(trial_idx, :);
+%     for k = 1:npoints
+%         win    = find(t > (t_freq(k) - windowdur/2) & ...
+%                       t < (t_freq(k) + windowdur/2));
+%         taper  = hanning(numel(win))';
+%         model  = [cos(phi_dp_inst(win)) .* taper;
+%                  -sin(phi_dp_inst(win)) .* taper];
+%         resp   = epoch(win) .* taper;
+%         coeffs_ar(trial_idx, k, :) = model' \ resp';
+%     end
+% end
+% 
+% oae_ar        = abs(complex(coeffs_ar(:,:,1), coeffs_ar(:,:,2)));
+% median_oae_ar = median(oae_ar, 1);
+% std_oae_ar    = std(oae_ar, 0, 1);
 
 % NaN out artifact windows
 trials_clean = trials_so_far;
-for trial_idx = 1:n_trials
-    for k = 1:npoints
-        if oae_ar(trial_idx, k) > median_oae_ar(1,k) + 3 * std_oae_ar(1,k)
-            win = find(t > (t_freq(k) - windowdur * 0.1) & ...
-                       t < (t_freq(k) + windowdur * 0.1));
-            trials_clean(trial_idx, win) = NaN;
-        end
-    end
-end
+% for trial_idx = 1:n_trials
+%     for k = 1:npoints
+%         if oae_ar(trial_idx, k) > median_oae_ar(1,k) + 3 * std_oae_ar(1,k)
+%             win = find(t > (t_freq(k) - windowdur * 0.1) & ...
+%                        t < (t_freq(k) + windowdur * 0.1));
+%             trials_clean(trial_idx, win) = NaN;
+%         end
+%     end
+% end
 
 DPOAE = mean(trials_clean, 1, 'omitnan');
 

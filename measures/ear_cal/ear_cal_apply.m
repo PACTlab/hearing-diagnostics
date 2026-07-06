@@ -3,7 +3,7 @@ function [stim_filt, att_dB] = ear_cal_apply(stim, cal, target_dB)
 stim_filt_raw = filter(cal.filter_b, 1, stim); 
 
 peak = max(abs(stim_filt_raw)); 
-scale_factor = .95/peak; 
+scale_factor = .95/.95; 
 stim_filt = stim_filt_raw * scale_factor; 
 
 scale_dB = mag2db(1/scale_factor); 

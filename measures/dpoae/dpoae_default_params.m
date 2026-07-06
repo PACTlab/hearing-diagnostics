@@ -54,7 +54,7 @@ params.noisefreqs_multiplier = 1 + -1*params.sweepDirection .* [.1:.02:.16];
 params.fs                 = 48828.125;     % TDT standard
 
 % Recording and analysis
-params.gain               = 10;        % read from the transducer file?
+params.gain               = 20;        % read from the transducer file?
 params.VtoSPL   = (1 / (params.gain * 500e-3)) .* (1/20e-6); 
 params.npoints = 512; 
 

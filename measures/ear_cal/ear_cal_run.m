@@ -78,7 +78,7 @@ for fi = 1:n_freqs
         pause(0.05);
     else
         zeros_buf = zeros(size(tone));
-        switch lower(params.ear)
+        switch lower(params.channel)
             case 'ch1'
                 stim_ch1 = tone;
                 stim_ch2 = zeros_buf;
@@ -111,7 +111,8 @@ for fi = 1:n_freqs
     end
 
     % Convert to dB SPL
-    gain = 1; 
+    gain = params.gain_db; 
+    mat2volts = 5; 
     mic_pa_per_v   = 1/(gain * transducer.mic.sensitivity_mVperPa/1e3);
     pressure_pa    = rms_values(fi) / mic_pa_per_v;
     db_spl(fi)     = 20 * log10(pressure_pa / 20e-6) + params.attn;
@@ -138,7 +139,7 @@ result_data.rms_volts      = rms_values;
 result_data.db_spl         = db_spl;
 result_data.filter_b       = b;
 result_data.filter_info    = filter_info;
-result_data.channel        = params.ear;
+result_data.channel        = params.channel;
 result_data.transducer     = transducer.display_name;
 result_data.method         = params.method;
 
@@ -146,14 +147,14 @@ result_data.method         = params.method;
 
 save_params              = params;
 save_params.measure_type = 'EARCAL';
-save_params.ear          = params.ear;
+save_params.channel          = params.channel;
 
 [~, metadata] = session_save_run(save_dir, metadata, ...
     save_params, result_data);
 
 result.filter_b    = b;
 result.filter_info = filter_info;
-result.channel     = params.ear;
+result.channel     = params.channel;
 result.db_spl      = db_spl;
 result.frequency_hz = freqs;
 
