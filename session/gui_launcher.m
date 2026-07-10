@@ -296,7 +296,7 @@ function metadata = load_or_init_metadata(save_dir)
     if exist(metadata_file, 'file')
         loaded   = load(metadata_file, 'metadata');
         metadata = loaded.metadata;
-        fprintf('Loaded existing session: %d runs so far.\n', metadata.n_runs);
+        fprintf('Loaded existing session: %d runs so far.\n', metadata.total_runs);
     else
         metadata = session_init(save_dir);
         save(metadata_file, 'metadata');

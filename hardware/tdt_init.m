@@ -10,17 +10,17 @@ function tdt = tdt_init(config, measure_type)
     if nargin < 2
         measure_type = 'acoustic';
     end
-    %try
+    try
         [tdt.f1RZ, tdt.RZ, tdt.fs] = load_play_circuit(config, measure_type, FS_tag, fig_num, usb_ch, 0, IAC);
 
         tdt.ADdelay = 98+150; % Samples: measured using get_electricalDelay.m
         tdt.mat2volts = 5.0; % measures using get_card2volts.m
 
         fprintf('TDT RZ6 connected. Fs = %.3f Hz\n', tdt.fs);
-    % catch e
-    %     warning('tdt_init:connectionFailed', ...
-    %         'Could not connect to TDT. Running in stub mode.');
-    %     fprintf('Check TDT - Hardware on?\n')
-    %     tdt = [];
-    % end
+    catch e
+        warning('tdt_init:connectionFailed', ...
+            'Could not connect to TDT. Running in stub mode.');
+        fprintf('Check TDT - Hardware on?\n')
+        tdt = [];
+    end
 end
