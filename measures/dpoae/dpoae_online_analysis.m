@@ -122,7 +122,7 @@ for k = 1:npoints
     for nf = 1:n_nf
         row = (nf-1)*2 + 1;
         noise_rows(row,   :) =  cos(nearfreqs(nf) .* phi_dp_inst(win)) .* taper;
-        noise_rows(row+1, :) = -sin(nearfreqs(nf) .* phi_dp_inst(win)) .* taper;
+        noise_rows(row + 1, :) = -sin(nearfreqs(nf) .* phi_dp_inst(win)) .* taper;
     end
     coeffs_noise(k, :) = noise_rows' \ resp';
 end

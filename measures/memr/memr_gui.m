@@ -1,4 +1,4 @@
-function dpoae_gui(save_dir, metadata)
+function memr_gui(save_dir, metadata)
 % DPOAE_GUI  Main DPOAE data collection window.
 % Launches session selection first, then opens main acquisition window.
 
@@ -7,15 +7,11 @@ if nargin < 1; save_dir = ''; end
 
 %% --- Session ---
 % Lets you create (or reload) the session file to save everything to
-% Reads from launcher if used to get to dpoae_gui()
+% Reads from launcher if used to get to memr_gui()
 if isempty(save_dir)
     [save_dir, metadata] = session_load_or_create();
     if isempty(save_dir); return; end
 end
-
-%% --- To Do --
-% Handle calibration
-warning('off', 'Session:noTransducerCal');
 
 %% --- Load the General Config --- 
 cfg = config_load();
@@ -35,24 +31,23 @@ if ~isempty(cfg.calibration.active_transducer_file)
     try
         transducer_cal = cal_load_transducer(cfg.calibration.active_transducer_file);
     catch e
-        warning('dpoae_gui:calLoadFailed', ...
+        warning('memr_gui:calLoadFailed', ...
             'Could not load transducer cal: %s', e.message);
     end
 end
 
-% Ear cal starts empty — loaded later if run
-[cal_ch1, cal_ch2] = ear_cal_load(save_dir); 
- 
-ear_cal.ch1 = cal_ch1.run.data; 
-ear_cal.ch2 = cal_ch2.run.data; 
+% % Ear cal starts empty — loaded later if run
+% [cal_ch1, cal_ch2] = ear_cal_load(save_dir); 
+% 
+% ear_cal.ch1 = cal_ch1.run.data; 
+% ear_cal.ch2 = cal_ch2.run.data; 
 
 %% --- Default params ---
 % if lab_default project, use the params in this folder, otherwise, use the
 % params in the project folder. If no params in the project folder, use
 % lab_defaults.
-params = project_load_defaults('dpoae', metadata.project);
 
-default_levels_str = []; 
+params = project_load_defaults('memr', metadata.project);
 
 %% --- State ---
 state.running  = false;
@@ -61,13 +56,13 @@ state.stub_mode = isempty(tdt);
 
 % Show stub mode warning in status bar if active
 if state.stub_mode
-    fprintf('DPOAE GUI running in stub mode — no hardware connected.\n');
+    fprintf('MEMR GUI running in stub mode — no hardware connected.\n');
 end
 
 %% --- Main figure ---
 
 fig = uifigure(...
-    'Name',            sprintf('DPOAE — %s', metadata.subject_id), ...
+    'Name',            sprintf('MEMR — %s', metadata.subject_id), ...
     'Position',        [50 50 1200 750], ...
     'CloseRequestFcn', @(~,~) onCloseRequest());
 
@@ -202,17 +197,8 @@ stimTypeDrop = makeField(ctrlGrid, 'Stim Type', 2, 1,  'drop', {'swept','discret
 stimTypeDrop.ValueChangedFcn = @(~,~) onStimTypeChanged();
 
 % Parameter Section varied for swept vs discrete
-freqRatio = makeField(ctrlGrid, 'F2/F1 Ratio', 1, 3, 'edit', string(params.ratio)); 
-sweepRate = makeField(ctrlGrid, 'Sweep Rate', 1, 6, 'edit', '1', swept_color); 
-sweepDir = makeField(ctrlGrid, 'Sweep Dir', 1, 4, 'drop', {'Up', 'Down'}, swept_color); 
-sweepType = makeField(ctrlGrid, 'Log/Linear Sweep', 1, 5, 'drop', {'Log', 'Linear'}, swept_color); 
-sweepf2min = makeField(ctrlGrid, 'Min F2', 1, 7, 'edit', string(params.min_f2_hz), swept_color); 
-sweepf2max = makeField(ctrlGrid, 'Max F2', 1, 8, 'edit', string(params.max_f2_hz), swept_color); 
-sweepBuffDur = makeField(ctrlGrid, 'Buff Dur (ms)', 1, 9, 'edit', string(params.buffdur_ms), swept_color); 
-disDuration = makeField(ctrlGrid, 'Duration (ms)', 2, 4, 'edit', string(params.duration_ms), discrete_color); 
-disF2list = makeField(ctrlGrid, 'F2 List', 2, 5, 'edit', mat2str(params.f2_hz), discrete_color); 
-levelf1 = makeField(ctrlGrid, 'F1 Level (dB)', 1, 2, 'edit', string(params.level_f1_dB)); 
-levelf2 = makeField(ctrlGrid, 'F2 Level (dB)', 2, 2, 'edit', string(params.level_f2_dB)); 
+elicDur = makeField(ctrlGrid, 'Elic. Dur (ms)', 1, 3, 'edit', string(params.elic_duration_ms)); 
+levelRange = makeField(ctrlGrid, 'Level Range (dB)', 1, 6, 'edit', string(params.level_range_db), swept_color); 
 
 autoStopCheck = uicheckbox(ctrlGrid, ...
     'Text',     'Auto-stop', ...
@@ -257,77 +243,89 @@ paramsBar = uilabel(ctrlGrid, ...
 paramsBar.Layout.Row    = 3;
 paramsBar.Layout.Column = [8 11];
 %% ================================================================
-%  ROW 3 — Plots
+%  ROW 3 — Plot
 %% ================================================================
 
-plotGrid = uigridlayout(mainGrid, [1 2]);
-plotGrid.ColumnWidth = {'4x', '1x'}; 
+plotGrid = uigridlayout(mainGrid, [2 2]);
+plotGrid.ColumnWidth = {'2x', '1x'}; 
+plotGrid.RowHeight = {'1x', 100}; 
 plotGrid.Layout.Row    = 3;
 plotGrid.Layout.Column = 1;
 plotGrid.ColumnSpacing = 6;
 plotGrid.Padding       = [0 0 0 0];
 
-%% --- Left col: Current Waveform ---
-% Waveform panel
-wavePanel = uipanel(plotGrid, ...
+%% --- Left col: Current Average Response ---
+% Frequency Response panel
+freqRespPanel = uipanel(plotGrid, ...
     'BorderType',      'line', ...
-    'Title',           'Running average', ...
+    'Title',           'Average Response', ...
     'BackgroundColor', 'w');
-wavePanel.Layout.Row    = 1;
-wavePanel.Layout.Column = 1;
+freqRespPanel.Layout.Row    = 1;
+freqRespPanel.Layout.Column = 1;
 
-waveGrid = uigridlayout(wavePanel, [1 1]);
-waveGrid.Padding         = [8 8 8 8];
-waveGrid.BackgroundColor = 'w';
+freqRespGrid = uigridlayout(freqRespPanel, [1 1]);
+freqRespGrid.Padding         = [8 8 8 8];
+freqRespGrid.BackgroundColor = 'w';
 
-waveAx = uiaxes(waveGrid, ...
-    'XLim',   [params.min_f2_hz, params.max_f2_hz], ...
+freqRespAx = uiaxes(freqRespGrid, ...
+    'XLim',   params.frequency_window_hz/1000, ...
     'YLim',   params.amplitude_window_dB, ...
     'Box',    'on', ...
     'FontSize', 11, ...
     'XScale','log');
-waveAx.Layout.Row    = 1;
-waveAx.Layout.Column = 1;
-xlabel(waveAx, 'Frequency (Hz)');
-ylabel(waveAx, 'Amplitude (dB)');
-hold(waveAx, 'on');
+freqRespAx.Layout.Row    = 1;
+freqRespAx.Layout.Column = 1;
+xlabel(freqRespAx, 'Frequency (kHz)');
+ylabel(freqRespAx, '\Delta Amplitude (dB)');
+hold(freqRespAx, 'on');
 
-avgLineDP     = plot(waveAx, NaN, NaN, 'LineWidth', 1.8);   % primary line
-avgLineNF     = plot(waveAx, NaN, NaN, 'LineWidth', 1.8); 
-avgLineF1     = plot(waveAx, NaN, NaN, 'LineWidth', 1.8);   % primary line
-avgLineF2     = plot(waveAx, NaN, NaN, 'LineWidth', 1.8); 
+avgLine     = plot(freqRespAx, NaN, NaN, 'LineWidth', 1.8);   % primary line
 
-% Plotting Panel 
+% Magnitude Change panel avg'd over frequency (for threshold)
+threshPanel = uipanel(plotGrid, ...
+    'BorderType',      'line', ...
+    'Title',           'Change in Abs.', ...
+    'BackgroundColor', 'w');
+threshPanel.Layout.Row    = 1;
+threshPanel.Layout.Column = 2;
+
+% Vizualization Panel 
 plotPanel = uipanel(plotGrid, ...
     'BorderType',      'line', ...
     'Title',           'Plot Options', ...
     'BackgroundColor', 'w');
-plotPanel.Layout.Row    = 1;
+plotPanel.Layout.Row    = 2;
 plotPanel.Layout.Column = 2;
 
-plotOptionsGrid = uigridlayout(plotPanel, [4 2]);
-plotOptionsGrid.RowHeight    = {40, 40, '1x',24};
-plotOptionsGrid.ColumnWidth = {'1x', '1x'}; 
+plotOptionsGrid = uigridlayout(plotPanel, [2 5]);
+plotOptionsGrid.RowHeight    = {40, 24};
+plotOptionsGrid.ColumnWidth = {60, 60, 60, 60, '1x'}; 
 plotOptionsGrid.Padding      = [8 8 8 8];
 plotOptionsGrid.RowSpacing   = 4;
 plotOptionsGrid.BackgroundColor = 'w';
 
 viz_xminField = makeField(plotOptionsGrid, 'X Min (Hz)', 1, 1, 'edit', ...
-    string(params.min_f2_hz));
+    string(params.frequency_window_hz(1)));
 viz_xmaxField = makeField(plotOptionsGrid, 'X Max (Hz)', 1, 2, 'edit', ...
-    string(params.max_f2_hz));
-viz_yminField = makeField(plotOptionsGrid, 'Y Min (dB)', 2, 1, 'edit', ...
+    string(params.frequency_window_hz(2)));
+viz_yminField = makeField(plotOptionsGrid, 'Y Min (dB)', 1, 3, 'edit', ...
     string(params.amplitude_window_dB(1)));
-viz_ymaxField = makeField(plotOptionsGrid, 'Y Max (dB)', 2, 2, 'edit', ...
+viz_ymaxField = makeField(plotOptionsGrid, 'Y Max (dB)', 1, 4, 'edit', ...
     string(params.amplitude_window_dB(2)));
 
 applyVizBtn = uibutton(plotOptionsGrid, ...
     'Text',            'Apply', ...
     'ButtonPushedFcn', @(~,~) updateVizWindow());
-applyVizBtn.Layout.Row    = 4;
-applyVizBtn.Layout.Column = [1 2];
+applyVizBtn.Layout.Row    = 2;
+applyVizBtn.Layout.Column = [3 5];
 
 % TODO: Add norms toggle
+normsCheck = uicheckbox(plotOptionsGrid, ...
+    'Text',     'Plot Norms', ...
+    'Value',    0, ...
+    'FontSize', 11);
+normsCheck.Layout.Row    = 1;
+normsCheck.Layout.Column = 5;
 
 %% ================================================================
 %  CALLBACKS
@@ -357,16 +355,16 @@ onStimTypeChanged();
         ymin = str2double(viz_yminField.Value);
         ymax = str2double(viz_ymaxField.Value);
         if ~isnan(xmin) && ~isnan(xmax) && xmax > xmin
-            waveAx.XLim = [xmin xmax];
+            freqRespAx.XLim = [xmin xmax];
         end
         if ~isnan(ymin) && ~isnan(ymax) && ymax > ymin
-            waveAx.YLim = [ymin ymax];
+            freqRespAx.YLim = [ymin ymax];
         end
     end
 
     function onRun()
         params = readParamsFromGui();
-        err    = dpoae_validate_params(params);
+        err    = memr_validate_params(params);
         if ~isempty(err)
             uialert(fig, err, 'Invalid parameters');
             return
@@ -385,21 +383,21 @@ onStimTypeChanged();
         callbacks.update_title = @(msg) setWaveTitle(msg);
 
         try
-            metadata = dpoae_run(params, save_dir, metadata, tdt, ear_cal, callbacks);
+            metadata = memr_run(params, save_dir, metadata, tdt, ear_cal, callbacks);
         catch e
             if ~isempty(tdt)
                 tdt_close(tdt); 
             end
             state.running = false;
             setRunning(false);
-            wavePanel.Title = 'Running average';
+            freqRespPanel.Title = 'Running average';
             uialert(fig, e.message, 'Acquisition error');
             return
         end
 
         state.running = false;
         setRunning(false);
-        wavePanel.Title = 'Average Response';
+        freqRespPanel.Title = 'Average Response';
         updateStatus(sprintf('Done. Total runs this session: %d', ...
             metadata.total_runs));
     end
@@ -450,7 +448,7 @@ onStimTypeChanged();
 %% ================================================================
 
     function p = readParamsFromGui()
-    p = project_load_defaults('dpoae', metadata.project);
+    p = project_load_defaults('memr', metadata.project);
 
     % --- Shared params ---
     p.stim_type    = lower(stimTypeDrop.Value);
@@ -478,7 +476,7 @@ onStimTypeChanged();
         p.f2_hz        = str2num(disF2list.Value); %#ok<ST2NM>
     end
 
-    % --- Viz params (display only, not passed to dpoae_run) ---
+    % --- Viz params (display only, not passed to memr_run) ---
     p.viz_xlim = [str2double(viz_xminField.Value) ...
                   str2double(viz_xmaxField.Value)];
     p.amplitude_window_dB = [str2double(viz_yminField.Value) ...
@@ -507,7 +505,7 @@ onStimTypeChanged();
     end
 
     function setWaveTitle(msg)
-        wavePanel.Title = msg;
+        freqRespPanel.Title = msg;
     end
 
     function setRunning(tf)

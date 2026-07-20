@@ -33,7 +33,6 @@ params.speed = 1; % octaves if scale is log
 params.sweepDirection = 1; % + 1 for up sweep, -1 for downsweep
 params.buffdur_ms   = 250; 
 
-
 % Level
 params.level_f2_dB      = 65;
 params.level_f1_dB      = 55; 
@@ -55,7 +54,7 @@ params.fs                 = 48828.125;     % TDT standard
 
 % Recording and analysis
 params.gain               = 20;        % read from the transducer file?
-params.VtoSPL   = (1 / (params.gain * 500e-3)) .* (1/20e-6); 
+params.VtoSPL   = (1 / (db2mag(params.gain) * 500e-3)) .* (1/20e-6); 
 params.npoints = 512; 
 
 % Artifact rejection — placeholder
