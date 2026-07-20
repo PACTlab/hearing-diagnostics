@@ -110,7 +110,7 @@ efrBtn   = makeMeasureBtn(btnGrid, 'EFR',   2, true, @(~,~) launchEFR());
 dpBtn    = makeMeasureBtn(btnGrid, 'DPOAE', 3, true, @(~,~) launchDPOAE());
 sfBtn    = makeMeasureBtn(btnGrid, 'SFOAE', 4, false, @(~,~) []);
 teBtn   = makeMeasureBtn(btnGrid, 'TEOAE', 5, false, @(~,~) []);
-memrBtn  = makeMeasureBtn(btnGrid, 'MEMR',  6, false, @(~,~) []);
+memrBtn  = makeMeasureBtn(btnGrid, 'MEMR',  6, true, @(~,~) launchMEMR());
 
 % Divider
 btnGrid.ColumnWidth{1,7} = 30; 
@@ -204,6 +204,11 @@ end
     function launchDPOAE()
          metadata = load_or_init_metadata(save_dir);
         dpoae_gui(save_dir, metadata); 
+    end
+
+    function launchMEMR()
+         metadata = load_or_init_metadata(save_dir);
+        memr_gui(save_dir, metadata); 
     end
 
     function launchEarCal()

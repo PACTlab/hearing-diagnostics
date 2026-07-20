@@ -113,13 +113,13 @@ for fi = 1:n_freqs
     % Convert to dB SPL
     gain = params.gain_db; 
     mat2volts = 5; 
-    mic_pa_per_v   = 1/(gain * transducer.mic.sensitivity_mVperPa/1e3);
-    pressure_pa    = rms_values(fi) / mic_pa_per_v;
+    mic_pa_per_v   = 1/(db2mag(gain) * transducer.mic.sensitivity_mVperPa/1e3);
+    pressure_pa    = rms_values(fi) * mic_pa_per_v;
     db_spl(fi)     = 20 * log10(pressure_pa / 20e-6) + params.attn;
 
     % Update plot
     if has_callbacks
-        callbacks.update_plot(freqs(1:fi), db_spl(1:fi));
+        callbacks.update_plot(freqs(1:fi), db_spl(1:fi) - params.attn);
     end
 
 end   % frequency loop

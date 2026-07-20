@@ -11,6 +11,7 @@ addpath(fullfile(rootDir, 'measures', 'abr'));
 addpath(fullfile(rootDir, 'measures', 'dpoae'));
 addpath(fullfile(rootDir, 'measures', 'ear_cal'));
 addpath(fullfile(rootDir, 'measures', 'EFR')); 
+addpath(fullfile(rootDir, 'measures', 'memr'))
 
 addpath(fullfile(rootDir, 'tests', 'unit'));
 %addpath(fullfile(rootDir, 'tests', 'demo'));

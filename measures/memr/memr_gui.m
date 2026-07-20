@@ -37,10 +37,10 @@ if ~isempty(cfg.calibration.active_transducer_file)
 end
 
 % % Ear cal starts empty — loaded later if run
-% [cal_ch1, cal_ch2] = ear_cal_load(save_dir); 
-% 
-% ear_cal.ch1 = cal_ch1.run.data; 
-% ear_cal.ch2 = cal_ch2.run.data; 
+[cal_ch1, cal_ch2] = ear_cal_load(save_dir); 
+
+ear_cal.ch1 = cal_ch1.run.data; 
+ear_cal.ch2 = cal_ch2.run.data; 
 
 %% --- Default params ---
 % if lab_default project, use the params in this folder, otherwise, use the
@@ -165,7 +165,7 @@ settingsBtn = uibutton(btnGrid, 'Text', 'Settings', ...
 settingsBtn.Layout.Row    = 1;
 settingsBtn.Layout.Column = 2;
 
-quitBtn = uibutton(btnGrid, 'Text', 'Quit DPOAE', ...
+quitBtn = uibutton(btnGrid, 'Text', 'Quit MEMR', ...
     'FontColor',       [0.8 0.1 0.1], ...
     'ButtonPushedFcn', @(~,~) onCloseRequest());
 quitBtn.Layout.Row    = 1;
