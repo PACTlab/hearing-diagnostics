@@ -10,9 +10,8 @@ if isempty(save_dir)
 end
 
 %% --- Figure ---
-
 fig = uifigure(...
-    'Name',            'Hearing Lab', ...
+    'Name',            'Precision Audiology and Clinical Translation Lab', ...
     'Position',        [50 550 1100 280], ...
     'Resize',          'on', ...
     'CloseRequestFcn', @(~,~) onClose());
@@ -37,11 +36,11 @@ sessGrid.Padding         = [10 6 10 6];
 sessGrid.ColumnSpacing   = 10;
 sessGrid.BackgroundColor = 'w';
 
-makeInfoChip(sessGrid, 'Subject',  metadata.subject_id, 1);
-makeInfoChip(sessGrid, 'Species',  metadata.species,    2);
-makeInfoChip(sessGrid, 'Operator', metadata.operator,   3);
-makeInfoChip(sessGrid, 'Date',     metadata.date,       4);
-makeInfoChip(sessGrid, 'Project',  metadata.project,    5);
+gui_makeInfoChip(sessGrid, 'Subject',  metadata.subject_id, 1);
+gui_makeInfoChip(sessGrid, 'Species',  metadata.species,    2);
+gui_makeInfoChip(sessGrid, 'Operator', metadata.operator,   3);
+gui_makeInfoChip(sessGrid, 'Date',     metadata.date,       4);
+gui_makeInfoChip(sessGrid, 'Project',  metadata.project,    5);
 
 divLbl = uilabel(sessGrid, 'Text', '|', 'FontColor', [0.8 0.8 0.8]);
 divLbl.Layout.Row    = 1;
@@ -56,10 +55,6 @@ timerLbl = uilabel(sessGrid, ...
     'HorizontalAlignment', 'center');
 timerLbl.Layout.Row    = 1;
 timerLbl.Layout.Column = 7;
-
-divLbl2 = uilabel(sessGrid, 'Text', '|', 'FontColor', [0.8 0.8 0.8]);
-divLbl2.Layout.Row    = 1;
-divLbl2.Layout.Column = 8;
 
 refreshBtn = uibutton(sessGrid, 'Text', '↺ Refresh log', ...
     'BackgroundColor', [.94 .9 .55], ...
@@ -105,12 +100,12 @@ btnGrid.ColumnSpacing   = 6;
 btnGrid.BackgroundColor = 'w';
 
 % Active measures
-abrBtn = makeMeasureBtn(btnGrid, 'ABR', 1, true, @(~,~) launchABR());
-efrBtn   = makeMeasureBtn(btnGrid, 'EFR',   2, true, @(~,~) launchEFR());
-dpBtn    = makeMeasureBtn(btnGrid, 'DPOAE', 3, true, @(~,~) launchDPOAE());
-sfBtn    = makeMeasureBtn(btnGrid, 'SFOAE', 4, false, @(~,~) []);
+abrBtn  = makeMeasureBtn(btnGrid, 'ABR',   1, true,  @(~,~) launchMeasure('ABR',   @abr_gui));
+efrBtn  = makeMeasureBtn(btnGrid, 'EFR',   2, true,  @(~,~) launchMeasure('EFR',   @efr_gui));
+dpBtn   = makeMeasureBtn(btnGrid, 'DPOAE', 3, true,  @(~,~) launchMeasure('DPOAE', @dpoae_gui));
+sfBtn   = makeMeasureBtn(btnGrid, 'SFOAE', 4, false, @(~,~) []);
 teBtn   = makeMeasureBtn(btnGrid, 'TEOAE', 5, false, @(~,~) []);
-memrBtn  = makeMeasureBtn(btnGrid, 'MEMR',  6, true, @(~,~) launchMEMR());
+memrBtn = makeMeasureBtn(btnGrid, 'MEMR',  6, true,  @(~,~) launchMeasure('MEMR',  @memr_gui));
 
 % Divider
 btnGrid.ColumnWidth{1,7} = 30; 
@@ -120,10 +115,10 @@ div2.Layout.Row    = 1;
 div2.Layout.Column = 7;
 
 % Calibration buttons
-earCalBtn = makeMeasureBtn(btnGrid, 'Ear Cal', 8, true, @(~,~) launchEarCal());
-txdBtn = makeMeasureBtn(btnGrid, 'Transducer', 9, true, @(~,~) launchTransducer());
-fplBtn      = makeMeasureBtn(btnGrid, 'FPL',        10, false, @(~,~) []);
-
+earCalBtn = makeMeasureBtn(btnGrid, 'Ear Cal',    8,  true,  @(~,~) launchMeasure('Ear Cal',    @ear_cal_gui));
+txdBtn    = makeMeasureBtn(btnGrid, 'Transducer', 9,  true,  @(~,~) launchMeasure('Transducer', @transducer_check_gui));
+fplBtn    = makeMeasureBtn(btnGrid, 'FPL',        10, true, @(~,~) launchMeasure('FPL Cal', @probecal_gui));
+ 
 
 %% ================================================================
 %  ROW 3 — Run log
@@ -191,34 +186,45 @@ end
 %% ================================================================
 %  CALLBACKS
 %% ================================================================
-    function launchABR()
+    function launchMeasure(label, gui_fn)
+    % Open a measure window, or raise the one already open.
+
+        open_windows = findMeasureWindows();
+ 
+        if ~isempty(open_windows)
+            existing = open_windows(1);
+            open_label = getappdata(existing, 'HearingMeasureLabel');
+ 
+            % Same measure: just bring it forward, no interruption.
+            % Different measure: say so, because raising an ABR window
+            % after a DPOAE click would look like a bug.
+            if ~strcmp(open_label, label)
+                uialert(fig, sprintf( ...
+                    ['%s is already open. Only one measure can run at a ' ...
+                     'time — they share the RZ6 and the session run ' ...
+                     'counter.\n\nClose %s first.'], ...
+                    open_label, open_label), ...
+                    'Measure already open', 'Icon', 'info');
+            end
+ 
+            figure(existing);
+            return
+        end
+
         metadata = load_or_init_metadata(save_dir);
-        abr_gui(save_dir, metadata);
-    end
-
-    function launchEFR()
-         metadata = load_or_init_metadata(save_dir);
-        efr_gui(save_dir, metadata); 
-    end
-
-    function launchDPOAE()
-         metadata = load_or_init_metadata(save_dir);
-        dpoae_gui(save_dir, metadata); 
-    end
-
-    function launchMEMR()
-         metadata = load_or_init_metadata(save_dir);
-        memr_gui(save_dir, metadata); 
-    end
-
-    function launchEarCal()
-         metadata = load_or_init_metadata(save_dir);
-        ear_cal_gui(save_dir, metadata);
-    end
-
-    function launchTransducer()
-         metadata = load_or_init_metadata(save_dir);
-        transducer_check_gui(save_dir, metadata);
+ 
+        before = findall(0, 'Type', 'figure');
+ 
+        try
+            gui_fn(save_dir, metadata);
+        catch e
+            uialert(fig, sprintf('%s could not open:\n\n%s', ...
+                label, e.message), 'Launch failed');
+            return
+        end
+ 
+        registerMeasureWindows(before, label);
+        refreshLog();
     end
 
     function refreshFromDisk()
@@ -247,8 +253,25 @@ end
     end
 
     function onClose()
-        stop(tim);
-        delete(tim);
+        open_windows = findMeasureWindows();
+ 
+        if ~isempty(open_windows)
+            open_label = getappdata(open_windows(1), 'HearingMeasureLabel');
+            choice = uiconfirm(fig, sprintf( ...
+                ['%s is still open. Closing the launcher now leaves it ' ...
+                 'without a session.'], open_label), ...
+                'Measure still open', ...
+                'Options', {'Close anyway', 'Cancel'}, ...
+                'DefaultOption', 2, 'CancelOption', 2, 'Icon', 'warning');
+            if strcmp(choice, 'Cancel')
+                return
+            end
+        end
+ 
+        if ~isempty(tim) && isvalid(tim)
+            stop(tim);
+            delete(tim);
+        end
         delete(fig);
     end
 
@@ -274,13 +297,61 @@ end
         logTable.Data = tdata;
     end
 
+    function h = findMeasureWindows() % Helping to check to see if a window is already open
+        all_figs = findall(0, 'Type', 'figure');
+        keep     = false(size(all_figs));
+
+        for i = 1:numel(all_figs)
+            if isvalid(all_figs(i)) && ...
+                    isappdata(all_figs(i), 'HearingMeasureLabel')
+                keep(i) = true;
+            end
+        end
+
+        h = all_figs(keep);
+    end
+
+
+    function registerMeasureWindows(before, label)
+        % Mark whatever appeared while gui_fn was running.
+        %
+        % uifigure only. tdt_init creates a CLASSIC figure (config.hardware
+        % .fig_num, default 99) to host the RPco.x ActiveX control, and that
+        % window appears during GUI construction too. Classic figures have a
+        % numeric Number; uifigures have an empty one, which is the cleanest
+        % way to tell them apart.
+
+        after   = findall(0, 'Type', 'figure');
+        n_found = 0;
+
+        for i = 1:numel(after)
+            h = after(i);
+
+            if ~isvalid(h);              continue; end
+            if any(h == before);         continue; end   % already existed
+            if ~isempty(get(h, 'Number')); continue; end % ActiveX host
+
+            setappdata(h, 'HearingMeasureLabel', label);
+            n_found = n_found + 1;
+        end
+
+        if n_found == 0
+            % Fails open: worst case is the current behaviour, where a
+            % second window can be launched. Never wedges the launcher.
+            warning('gui_launcher:windowNotRegistered', ...
+                ['Could not identify the %s window, so single-window ' ...
+                'enforcement is off for it. Avoid opening a second ' ...
+                'measure until it is closed.'], label);
+        end
+    end
+
     function updateSessionBar()
         % Rebuild info chips with new session info
-        makeInfoChip(sessGrid, 'Subject',  metadata.subject_id, 1);
-        makeInfoChip(sessGrid, 'Species',  metadata.species,    2);
-        makeInfoChip(sessGrid, 'Operator', metadata.operator,   3);
-        makeInfoChip(sessGrid, 'Date',     metadata.date,       4);
-        makeInfoChip(sessGrid, 'Project',  metadata.project,    5);
+        gui_makeInfoChip(sessGrid, 'Subject',  metadata.subject_id, 1);
+        gui_makeInfoChip(sessGrid, 'Species',  metadata.species,    2);
+        gui_makeInfoChip(sessGrid, 'Operator', metadata.operator,   3);
+        gui_makeInfoChip(sessGrid, 'Date',     metadata.date,       4);
+        gui_makeInfoChip(sessGrid, 'Project',  metadata.project,    5);
     end
 
     function updateTimer()
@@ -296,48 +367,24 @@ end
         end
     end
 
-function metadata = load_or_init_metadata(save_dir)
-    metadata_file = fullfile(save_dir, 'session_metadata.mat');
-    if exist(metadata_file, 'file')
-        loaded   = load(metadata_file, 'metadata');
-        metadata = loaded.metadata;
-        fprintf('Loaded existing session: %d runs so far.\n', metadata.total_runs);
-    else
-        metadata = session_init(save_dir);
-        save(metadata_file, 'metadata');
-        fprintf('New session initialized.\n');
+    function metadata = load_or_init_metadata(save_dir)
+        metadata_file = fullfile(save_dir, 'session_metadata.mat');
+        if exist(metadata_file, 'file')
+            loaded   = load(metadata_file, 'metadata');
+            metadata = loaded.metadata;
+            fprintf('Loaded existing session: %d runs so far.\n', metadata.total_runs);
+        else
+            metadata = session_init(save_dir);
+            save(metadata_file, 'metadata');
+            fprintf('New session initialized.\n');
+        end
     end
-end
 
 end   % hearing_lab_gui
 
 %% ================================================================
 %  LOCAL FUNCTIONS
 %% ================================================================
-
-function makeInfoChip(parent, labelStr, valueStr, col)
-% Check if chip already exists and update, otherwise create
-existing = findobj(parent, 'Tag', sprintf('chip_val_%d', col));
-if ~isempty(existing)
-    existing.Text = valueStr;
-    return
-end
-
-p = uipanel(parent, 'BorderType', 'none', 'BackgroundColor', 'w');
-p.Layout.Row    = 1;
-p.Layout.Column = col;
-g = uigridlayout(p, [2 1]);
-g.RowHeight       = {'1x', '1x'};
-g.Padding         = [0 2 0 2];
-g.RowSpacing      = 0;
-g.BackgroundColor = 'w';
-lbl = uilabel(g, 'Text', labelStr, 'FontSize', 9, ...
-    'FontColor', [0.55 0.55 0.55]);
-lbl.Layout.Row = 1; lbl.Layout.Column = 1;
-val = uilabel(g, 'Text', valueStr, 'FontSize', 12, ...
-    'FontWeight', 'bold', 'Tag', sprintf('chip_val_%d', col));
-val.Layout.Row = 2; val.Layout.Column = 1;
-end
 
 function btn = makeMeasureBtn(parent, label, col, enabled, callback)
 
@@ -352,11 +399,13 @@ measure_colors = {
     [0.22 0.54 0.85], [0.88 0.93 0.98];   % 7 Ear Cal
     [0.50 0.50 0.00], [0.96 0.96 0.85];   % 8 Transducer
     [0.45 0.25 0.10], [0.94 0.90 0.85];   % 9 FPL
+    [0.22 0.54 0.85], [0.88 0.93 0.98];   % 
+
 };
 
 btn = uibutton(parent, ...
     'Text',    label, ...
-    'Enable',  bool2str(enabled), ...
+    'Enable',  gui_onoff(enabled), ...
     'FontSize', 13, ... 
     'FontWeight', 'bold');
 btn.Layout.Row    = 1;
@@ -372,6 +421,3 @@ else
 end
 end
 
-function s = bool2str(tf)
-if tf; s = 'on'; else; s = 'off'; end
-end

@@ -1,9 +1,11 @@
-function transducer_check_gui()
-% TRANSDUCER_CHECK_GUI  Transducer frequency response check.
-% No session required. Results saved to calibration/data/probe_checks/.
-
-% TODO: should we get here from the launcher? 
-
+function transducer_check_gui(save_dir, metadata)
+% save_dir and metadata are accepted for a uniform launcher signature.
+% Transducer check does not write to the session, so they are unused for
+% now — keep them so the measure contract stays uniform.
+ 
+if nargin < 1; save_dir = ''; end
+if nargin < 2; metadata = []; end
+ 
 %% --- Load config and registry ---
 
 cfg         = config_load();

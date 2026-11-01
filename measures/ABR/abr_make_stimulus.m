@@ -1,48 +1,43 @@
-function [stim_out, stim_info] = abr_make_stimulus(params, cal)
-% ABR_MAKE_STIMULUS  Generate ABR stimulus waveform(s).
+function [stim, stim_info] = abr_make_stimulus(params, ref_peak)
+% ABR_MAKE_STIMULUS  Generate the bare ABR stimulus waveform.
 %
-% Builds positive and negative polarity buffers with the stimulus at
-% sample 1, zero-padded to the maximum ISI length. Jitter is encoded
-% in isi_samples — pass stim_out.isi_samples(rep) to TDT as nsamps
-% each rep so the inter-stimulus interval varies while stimulus onset
-% stays at sample 1.
+% Returns ONLY the stimulus: no onset delay, no ISI padding, no polarity
+% buffers, no calibration. Peak-normalized to ref_peak.
+%
+% This is stage 1 of three (see calibration-design.md §5):
+%
+%   1. abr_make_stimulus  bare waveform, level-independent      <- here
+%   2. cal_apply_stimulus calibration + attenuation (shared)
+%   3. abr_make_buffers   onset delay, polarity, ISI jitter
 %
 % Inputs:
-%   params    - ABR params struct from abr_default_params
-%   cal       - calibration struct (from cal_load), used to set level
+%   params   - ABR params struct from abr_default_params
+%   ref_peak - digital peak to normalize to
+%              (default config.calibration.ref_peak)
 %
 % Outputs:
-%   stim_out  - struct:
-%     .pos          [max_isi_samples x 1]  positive polarity buffer
-%     .neg          [max_isi_samples x 1]  negative polarity buffer
-%     .isi_samples  [1 x n_reps]           samples to play per rep
-%     .atten_db     scalar                 attenuation applied
-%     .fs           scalar
-%     .n_stim       scalar                 stimulus length in samples
-%
-%   stim_info - struct with diagnostic fields, saved with each run
+%   stim      - [n x 1] stimulus waveform, peak = ref_peak
+%   stim_info - diagnostic fields, saved with each run
 
-%% --- Input checks ---
-
-if ~isscalar(params.levels_dbspl)
-    error('abr_make_stimulus:multiplelevels', ...
-        'levels_dbspl must be scalar. Call once per level.');
+if nargin < 2 || isempty(ref_peak)
+    cfg      = config_load();
+    ref_peak = cfg.calibration.ref_peak;
 end
 
 fs = params.fs;
 
-%% --- Build the base waveform (before level scaling) ---
+%% --- Build the waveform ---
 
 switch lower(params.stim_type)
 
     case 'toneburst'
-        base_stim  = make_toneburst(params, fs);
+        stim = make_toneburst(params, fs);
 
     case 'click'
-        base_stim  = make_click(params, fs);
+        stim = make_click(params, fs);
 
     case 'chirp'
-        base_stim  = load_chirp(params, fs);
+        stim = load_chirp(params, fs);
 
     otherwise
         error('abr_make_stimulus:unknownType', ...
@@ -50,88 +45,46 @@ switch lower(params.stim_type)
             params.stim_type);
 end
 
-% add a standard delay so stim doesn't start at sample 1
-delay_samps = ceil(params.stim_delay_ms/1000 .* fs); 
-base_stim = [zeros(delay_samps,1); base_stim]; 
-n_stim = numel(base_stim); 
+stim = stim(:);
 
-%% --- Apply calibration / level scaling ---
+%% --- Normalize to the reference peak ---
+% ref_peak is deliberately below 1.0: tdt_play_record errors on
+% |stim| > 1 mid-run, and downstream filtering overshoots.
 
-if ~isempty(cal)
-    [base_stim, atten_db] = cal_apply_transducer(base_stim, cal, ...
-        params.frequency_hz, params.levels_dbspl);
-else
-    atten_db = NaN;
-    warning('abr_make_stimulus:noCal', ...
-        'No calibration provided. Stimulus amplitude is uncalibrated.');
-end
-%% --- Compute ISI samples with jitter ---
+peak = max(abs(stim));
 
-nominal_isi_samples = round(fs / params.rate_hz); % samples for each epoch if no jitter
-
-if n_stim > nominal_isi_samples
-    warning('abr_make_stimulus:stimTooLong', ...
-        ['Stimulus (%d samples) is longer than ISI (%d samples). ' ...
-         'Increase rate or shorten stimulus.'], ...
-        n_stim, nominal_isi_samples);
+if peak == 0
+    error('abr_make_stimulus:zeroStimulus', ...
+        'Generated stimulus is all zeros. Check stim_type and parameters.');
 end
 
-n_reps      = params.n_reps;
-isi_samples = zeros(1, n_reps);
-
-for rep = 1:n_reps
-    jitter_factor    = 1 + (rand - 0.5) * 2 * params.jitter_pct / 100;
-    isi_samples(rep) = round(nominal_isi_samples * jitter_factor);
-end
-
-max_isi = max(isi_samples);
-
-%% --- Build polarity buffers ---
-% Stimulus at sample 1, zero-padded to max ISI length.
-% TDT plays only isi_samples(rep) samples per rep via nsamps tag —
-% that varying length is where the jitter lives.
-
-pos = zeros(max_isi, 1);
-neg = zeros(max_isi, 1);
-
-pos(1:n_stim) = base_stim;
-
-switch lower(params.polarity)
-    case 'alt'
-        neg(1:n_stim) = -base_stim;
-    case 'cond'
-        neg(1:n_stim) = base_stim;    % both same polarity
-    case 'rare'
-        neg(1:n_stim) = -base_stim;   % both inverted
-        pos(1:n_stim) = -base_stim;
-    otherwise
-        error('abr_make_stimulus:unknownPolarity', ...
-            'Unknown polarity: %s. Use alt, cond, or rare.', ...
-            params.polarity);
-end
-
-%% --- Package output ---
-
-stim_out.pos         = pos;
-stim_out.neg         = neg;
-stim_out.isi_samples = isi_samples;
-stim_out.atten_db    = atten_db;
-stim_out.fs          = fs;
-stim_out.n_stim      = n_stim;
+stim = stim * (ref_peak / peak);
 
 %% --- Diagnostic info ---
 
-stim_info.stim_type        = params.stim_type;
-stim_info.frequency_hz     = params.frequency_hz;
-stim_info.level_dbspl      = params.levels_dbspl;
-stim_info.polarity         = params.polarity;
-stim_info.n_reps           = n_reps;
-stim_info.nominal_isi_ms   = nominal_isi_samples / fs * 1000;
-stim_info.jitter_pct       = params.jitter_pct;
-stim_info.stim_duration_ms = n_stim / fs * 1000;
-stim_info.max_isi_ms       = max_isi / fs * 1000;
-stim_info.atten_db         = atten_db;
-stim_info.fs               = fs;
+stim_info.stim_type   = params.stim_type;
+stim_info.frequency_hz = params.frequency_hz;
+stim_info.n_samples   = numel(stim);
+stim_info.duration_ms = numel(stim) / fs * 1000;
+stim_info.ref_peak    = ref_peak;
+stim_info.fs          = fs;
+
+if strcmpi(params.stim_type, 'click')
+    stim_info.click_duration_us = params.click_duration_us;
+    stim_info.filtclick         = params.filtclick;
+    if params.filtclick
+        stim_info.click_filter  = params.click_filter;
+    end
+else
+    stim_info.duration_cyc  = params.duration_cyc;
+    stim_info.rise_fall_cyc = params.rise_fall_cyc;
+    stim_info.window_type   = params.window_type;
+end
+
+% Level, attenuation, polarity and ISI are NOT recorded here. They belong
+% to cal_out (stage 2) and buffer_info (stage 3), both of which abr_run
+% saves alongside this struct.
+
 end
 
 
@@ -140,14 +93,13 @@ end
 %% =========================================================
 
 function s = make_toneburst(params, fs)
-    n_rise = ceil((params.rise_fall_cyc/params.frequency_hz)*fs); 
-    n_plateau  = ceil((params.duration_cyc/params.frequency_hz)*fs); 
-    n = n_plateau + 2*n_rise; 
+    n_rise    = ceil((params.rise_fall_cyc/params.frequency_hz)*fs);
+    n_plateau = ceil((params.duration_cyc/params.frequency_hz)*fs);
+    n = n_plateau + 2*n_rise;
     t = (0:n-1)' / fs;
     s = -cos(2 * pi * params.frequency_hz * t);
 
-    % switch on params.window_type
-    switch params.window_type
+    switch lower(params.window_type)
         case 'blackman'
             gate = blackman(2*n_rise);
         case 'hann'
@@ -156,45 +108,80 @@ function s = make_toneburst(params, fs)
             gate = blackman(2*n_rise);
     end
 
-    gate_rise = gate(1:n_rise);
-    gate_fall = gate(n_rise+1:end);
-    gate_plateau = ones(n_plateau, 1);
-
-    envelope = [gate_rise; gate_plateau; gate_fall]; 
-
-    % n_ramp = round(params.rise_fall_ms / 1000 * fs);
-    % if 2 * n_ramp > n
-    %     error('abr_make_stimulus:rampTooLong', ...
-    %         'Rise/fall time is longer than half the stimulus duration.');
-    % end
+    envelope = [gate(1:n_rise); ones(n_plateau, 1); gate(n_rise+1:end)];
 
     s = s .* envelope;
 end
 
 
 function s = make_click(params, fs)
-    n_click = max(1, round(params.click_duration_us / 1e6 * fs));
-    n_stim = floor(fs/params.rate_hz); 
+% Returns ONLY the click and its filter tails.
+%
+% FIXED — audit finding #3. This previously returned a buffer one full ISI
+% long with the click at its MIDPOINT, roughly 45 ms in at 11.1 Hz.
+% abr_run records rec_window_ms = [0 20], so the click fell outside the
+% recorded epoch entirely and click ABR collected pre-stimulus baseline
+% only. It also tripped abr_make_stimulus:stimTooLong on every click run,
+% because the returned buffer was one ISI long by construction.
+%
+% Now the click sits at the start of a short waveform and
+% abr_make_buffers applies params.stim_delay_ms to position it — the same
+% way make_toneburst already worked.
+%
+% The bandpass is still implemented by zeroing FFT bins, which needs a
+% working buffer long enough for reasonable frequency resolution. That
+% buffer used to be floor(fs/rate_hz), which made the stimulus SPECTRUM
+% depend on the presentation rate: changing rate_hz silently changed the
+% filter's bin spacing. It is now a fixed length independent of rate_hz.
+% At 48828.125 Hz the resolution goes from about 11 Hz to about 6 Hz, so
+% the filtered click is marginally cleaner but otherwise the same stimulus.
 
-    single_click       = zeros(n_stim, 1);  % initialize click
-    click_ind = (0:n_click-1) - round(median(0:n_click-1)); 
-    single_click(floor(n_stim/2)+click_ind, 1)       = ones(n_click, 1);   % rarefaction = -ones, handled by polarity
-    
-    if params.filtclick % this filtering is as in cABR (human, Bharadwaj Lab)
-        clickF = fft(single_click);
-        f = (0:(numel(clickF)-1))*fs/numel(clickF);
-        clickF(f < params.click_filter(1)  | (f > params.click_filter(2)  & f <=fs/2)) = 0;
-        clickF(f > (fs - params.click_filter(1) ) | (f < (fs - params.click_filter(2) ) & f >= fs/2)) = 0;
-        single_click = ifft(clickF, 'symmetric');
-        win_raw = blackman(round(fs*1.66e-3));
-        win_ind = 0:(numel(win_raw)-1);
-        win_ind = win_ind - round(median(win_ind));
-        win = zeros(size(single_click));
-        win(floor(numel(win)/2) + win_ind) = win_raw;
-        single_click = single_click.*win;
-    end
+n_click = max(1, round(params.click_duration_us / 1e6 * fs));
 
-    s = single_click; 
+if ~params.filtclick
+    s = ones(n_click, 1);
+    return
+end
+
+%% --- Working buffer, rate-independent ---
+
+n_work = 2^nextpow2(round(0.1 * fs));   % ~168 ms at 48828.125 Hz
+centre = floor(n_work / 2);
+
+buf       = zeros(n_work, 1);
+click_ind = (0:n_click-1) - round(median(0:n_click-1));
+buf(centre + click_ind) = 1;
+
+%% --- Bandpass by zeroing bins (as in cABR, Bharadwaj Lab) ---
+
+clickF = fft(buf);
+f      = (0:(numel(clickF)-1))' * fs / numel(clickF);
+lo     = params.click_filter(1);
+hi     = params.click_filter(2);
+
+clickF(f < lo        | (f > hi        & f <= fs/2)) = 0;
+clickF(f > (fs - lo) | (f < (fs - hi) & f >= fs/2)) = 0;
+
+buf = ifft(clickF, 'symmetric');
+
+%% --- Gate, then crop to the gate's support ---
+% The blackman gate is what bounds the stimulus in time. Cropping to it is
+% what makes the returned waveform short instead of one ISI long.
+
+n_win   = round(fs * 1.66e-3);
+win     = blackman(n_win);
+win_ind = (0:n_win-1) - round(median(0:n_win-1));
+
+idx = centre + win_ind;
+
+if idx(1) < 1 || idx(end) > n_work
+    error('abr_make_stimulus:clickWindowOutOfRange', ...
+        'Click gate (%d samples) does not fit the working buffer (%d).', ...
+        n_win, n_work);
+end
+
+s = buf(idx) .* win;
+
 end
 
 

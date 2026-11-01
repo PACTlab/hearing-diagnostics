@@ -13,17 +13,26 @@ if isempty(save_dir)
     if isempty(save_dir); return; end
 end
 
-%% --- To Do --
-% Handle calibration
-warning('off', 'Session:noTransducerCal');
-
 %% --- Load the General Config --- 
 cfg = config_load();
 
+%% --- Default params ---
+% if lab_default project, use the params in this folder, otherwise, use the
+% params in the project folder. If no params in the project folder, use
+% lab_defaults.
+params = project_load_defaults('abr', metadata.project);
+
+default_levels_str = strjoin(arrayfun(@num2str, params.levels_dbspl, ...
+    'UniformOutput', false), ', ');
+
 %% --- Connect with TDT
 
-tdt = tdt_init(cfg, 'ephys'); 
-%tdt = []; 
+if params.stub_mode
+    tdt = [];
+    fprintf('params.stub_mode is true — skipping TDT connection.\n');
+else
+    tdt = tdt_init(cfg, 'ephys');
+end
 
 %% --- Load calibration ---
 
@@ -41,14 +50,6 @@ end
 % Ear cal starts empty — loaded later if run
 ear_cal = [];
 
-%% --- Default params ---
-% if lab_default project, use the params in this folder, otherwise, use the
-% params in the project folder. If no params in the project folder, use
-% lab_defaults.
-params = project_load_defaults('abr', metadata.project);
-
-default_levels_str = strjoin(arrayfun(@num2str, params.levels_dbspl, ...
-    'UniformOutput', false), ', ');
 %% --- State ---
 
 state.running  = false;
@@ -107,10 +108,10 @@ statusLbl.Layout.Row    = 1;
 statusLbl.Layout.Column = 1;
 
 % Subject info chips — read from metadata
-makeInfoChip(subGrid, 'Subject',  metadata.subject_id, 2);
-makeInfoChip(subGrid, 'Species',  metadata.species,    3);
-makeInfoChip(subGrid, 'Operator', metadata.operator,   4);
-makeInfoChip(subGrid, 'Date',     metadata.date,       5);
+gui_makeInfoChip(subGrid, 'Subject',  metadata.subject_id, 2);
+gui_makeInfoChip(subGrid, 'Species',  metadata.species,    3);
+gui_makeInfoChip(subGrid, 'Operator', metadata.operator,   4);
+gui_makeInfoChip(subGrid, 'Date',     metadata.date,       5);
 
 % Divider
 divLbl = uilabel(subGrid, 'Text', '|', 'FontColor', [0.8 0.8 0.8]);
@@ -118,21 +119,23 @@ divLbl.Layout.Row    = 1;
 divLbl.Layout.Column = 6;
 
 % Cal status badges
+calBadge = gui_cal_badge('Transducer', transducer_cal); 
 transducerCalLbl = uilabel(subGrid, ...
-    'Text',                calBadgeText('Transducer', transducer_cal), ...
+    'Text',                calBadge.text, ...
     'FontSize',            11, ...
     'HorizontalAlignment', 'center', ...
-    'BackgroundColor',     calBadgeColor(transducer_cal), ...
-    'FontColor',           calBadgeFontColor(transducer_cal));
+    'BackgroundColor',     calBadge.badgeColor, ...
+    'FontColor',           calBadge.fontColor);
 transducerCalLbl.Layout.Row    = 1;
 transducerCalLbl.Layout.Column = 7;
 
+calBadge = gui_cal_badge('Ear cal', ear_cal); 
 earCalLbl = uilabel(subGrid, ...
-    'Text',                calBadgeText('Ear cal', ear_cal), ...
+    'Text',                calBadge.text, ...
     'FontSize',            11, ...
     'HorizontalAlignment', 'center', ...
-    'BackgroundColor',     calBadgeColor(ear_cal), ...
-    'FontColor',           calBadgeFontColor(ear_cal));
+    'BackgroundColor',     calBadge.badgeColor, ...
+    'FontColor',           calBadge.fontColor);
 earCalLbl.Layout.Row    = 1;
 earCalLbl.Layout.Column = 8;
 
@@ -192,18 +195,26 @@ ctrlGrid.ColumnSpacing   = 8;
 ctrlGrid.BackgroundColor = 'w';
 
 % Parameter fields
-stimTypeDrop = makeField(ctrlGrid, 'Stimulus',              1, 1,  'drop', {'Tone burst','Click','Chirp'});
-freqField    = makeField(ctrlGrid, 'Frequency (Hz)',        1, 2,  'edit', num2str(params.frequency_hz));
-earDrop      = makeField(ctrlGrid, 'Ear',                  1, 3,  'drop', {'Right','Left'});
-polarityDrop = makeField(ctrlGrid, 'Polarity',             1, 4,  'drop', {'Alt','Cond','Rare'});
-levelsField  = makeField(ctrlGrid, 'Level series (dB SPL)',1, 5,  'edit', ...
-    strjoin(arrayfun(@num2str, params.levels_dbspl, 'UniformOutput', false), ', '));
+stimTypeDrop = gui_makeField(ctrlGrid, 'Stimulus',              1, 1,  'drop', {'Tone burst','Click','Chirp'});
+freqField    = gui_makeField(ctrlGrid, 'Frequency (Hz)',        1, 2,  'edit', num2str(params.frequency_hz));
+earDrop      = gui_makeField(ctrlGrid, 'Ear',                  1, 3,  'drop', {'Right','Left'});
+polarityDrop = gui_makeField(ctrlGrid, 'Polarity',             1, 4,  'drop', {'Alt','Cond','Rare'});
+switch lower(params.cal_type)
+    case 'atten'
+        levelsTxt = 'Atten (dB, 0 = loudest)';
+    case {'spl', 'fpl'}
+        levelsTxt = sprintf('Levels (dB %s)', upper(params.cal_type));
+    otherwise
+        levelsTxt = 'Levels';
+end
 
-repsField    = makeField(ctrlGrid, 'Reps (per pol)',       1, 7,  'edit', num2str(params.n_reps));
-rateField    = makeField(ctrlGrid, 'Rate (Hz)',            1, 8,  'edit', num2str(params.rate_hz));
-durField     = makeField(ctrlGrid, 'Dur (cyc)',             1, 9,  'edit', num2str(params.duration_cyc));
-riseField    = makeField(ctrlGrid, 'Rise (cyc)',            1, 10,  'edit', num2str(params.rise_fall_cyc));
-earCalDrop   = makeField(ctrlGrid, 'Ear cal',              1, 11, 'drop', {'Session','None','File...'});
+levelsField  = gui_makeField(ctrlGrid, levelsTxt ,1, 5,  'edit', ...
+    strjoin(arrayfun(@num2str, params.levels_dbspl, 'UniformOutput', false), ', '));
+repsField    = gui_makeField(ctrlGrid, 'Reps (per pol)',       1, 7,  'edit', num2str(params.n_reps));
+rateField    = gui_makeField(ctrlGrid, 'Rate (Hz)',            1, 8,  'edit', num2str(params.rate_hz));
+durField     = gui_makeField(ctrlGrid, 'Dur (cyc)',             1, 9,  'edit', num2str(params.duration_cyc));
+riseField    = gui_makeField(ctrlGrid, 'Rise (cyc)',            1, 10,  'edit', num2str(params.rise_fall_cyc));
+earCalDrop   = gui_makeField(ctrlGrid, 'Ear cal',              1, 11, 'drop', {'Session','None','File...'});
 
 resetPanel = uipanel(ctrlGrid, 'BorderType', 'none', 'BackgroundColor', 'w');
 resetPanel.Layout.Row    = 1;
@@ -333,9 +344,9 @@ noiseLbl = uilabel(noiseGrid, ...
 noiseLbl.Layout.Row    = 1;
 noiseLbl.Layout.Column = 1;
 
-makeNoiseChip(noiseGrid, 'Rejected',        '0',   2);
-makeNoiseChip(noiseGrid, 'Threshold (µV)',  '—',   3);
-makeNoiseChip(noiseGrid, 'Artifact reject', 'Off', 4);
+gui_makeNoiseChip(noiseGrid, 'Rejected',        '0',   2);
+gui_makeNoiseChip(noiseGrid, 'Threshold (µV)',  '—',   3);
+gui_makeNoiseChip(noiseGrid, 'Artifact reject', 'Off', 4);
 
 % Visualization Parameters
 vizPanel = uipanel(leftGrid, ...
@@ -353,10 +364,10 @@ vizGrid.ColumnSpacing   = 50;
 vizGrid.BackgroundColor = 'w';
 
 % TODO: wire viz panel fields to update display
-viz_startField    = makeField(vizGrid, 'Start (ms)',       1, 1, 'edit', num2str(params.viz_window_ms(1)));
-viz_endField      = makeField(vizGrid, 'End (ms)',         1, 2, 'edit', num2str(params.viz_window_ms(2)));
-viz_scaleField    = makeField(vizGrid, 'Y scale (µV)',     2, 1, 'edit', num2str(params.amplitude_window_uV(2)));
-viz_polarityDrop  = makeField(vizGrid, 'Polarity display', 2, 2, 'drop', {'Combined', 'Separated', 'Positive only', 'Negative only'});
+viz_startField    = gui_makeField(vizGrid, 'Start (ms)',       1, 1, 'edit', num2str(params.viz_window_ms(1)));
+viz_endField      = gui_makeField(vizGrid, 'End (ms)',         1, 2, 'edit', num2str(params.viz_window_ms(2)));
+viz_scaleField    = gui_makeField(vizGrid, 'Y scale (µV)',     2, 1, 'edit', num2str(params.amplitude_window_uV(2)));
+viz_polarityDrop  = gui_makeField(vizGrid, 'Polarity display', 2, 2, 'drop', {'Combined', 'Separated', 'Positive only', 'Negative only'});
 
 viz_startField.ValueChangedFcn   = @(~,~) updateVizWindow();
 viz_endField.ValueChangedFcn     = @(~,~) updateVizWindow();
@@ -389,11 +400,31 @@ xlabel(prevAx, 'Time (ms)');
 %% ================================================================
 
     function onRun()
+        config_check_warnings('fix');
         params = readParamsFromGui();
-        err    = abr_validate_params(params);
+        if isempty(params)
+            return          % readParamsFromGui already alerted
+        end
+        [err, warn]   = abr_validate_params(params);
+ 
         if ~isempty(err)
             uialert(fig, err, 'Invalid parameters');
             return
+        end
+ 
+        % Legal but probably not intended — let the operator back out.
+        if ~isempty(warn)
+            choice = uiconfirm(fig, ...
+                sprintf('%s\n\nRun anyway?', warn), ...
+                'Check these settings', ...
+                'Options', {'Run anyway', 'Cancel'}, ...
+                'DefaultOption', 2, ...
+                'CancelOption', 2, ...
+                'Icon', 'warning');
+            if strcmp(choice, 'Cancel')
+                return
+            end
+            fprintf(2, 'Proceeding with warnings:\n%s\n', warn);
         end
 
         state.running  = true;
@@ -442,13 +473,6 @@ xlabel(prevAx, 'Time (ms)');
     end
 
     function onCloseRequest()
-        % TODO: restore before deployment
-        % if state.running
-        %     uialert(fig, ...
-        %         'Stop data collection before quitting.', ...
-        %         'Cannot quit');
-        %     return
-        % end
         sel = uiconfirm(fig, ...
             'End this session and close ABR?', ...
             'Quit ABR', ...
@@ -473,7 +497,17 @@ xlabel(prevAx, 'Time (ms)');
         p.frequency_hz = str2double(freqField.Value);
         p.ear          = lower(earDrop.Value);
         p.polarity     = lower(polarityDrop.Value);
-        p.levels_dbspl = str2num(levelsField.Value); %#ok<ST2NM>
+        
+        % Get the levels correctly
+        [p.levels_dbspl, levels_err] = ...
+            gui_parse_numeric_list(levelsField.Value);
+        if ~isempty(levels_err)
+            uialert(fig, sprintf('Levels field: %s', levels_err), ...
+                'Invalid parameters');
+            p = [];
+            return
+        end
+
         p.n_reps       = round(str2double(repsField.Value));
         p.rate_hz      = str2double(rateField.Value);
         p.duration_cyc  = str2double(durField.Value);
@@ -634,92 +668,9 @@ end   % abr_gui
 %  LOCAL FUNCTIONS
 %% ================================================================
 
-function makeInfoChip(parent, labelStr, valueStr, col)
-p = uipanel(parent, 'BorderType', 'none', 'BackgroundColor', 'w');
-p.Layout.Row    = 1;
-p.Layout.Column = col;
-g = uigridlayout(p, [2 1]);
-g.RowHeight       = {'1x', '1x'};
-g.Padding         = [0 2 0 2];
-g.RowSpacing      = 0;
-g.BackgroundColor = 'w';
-lbl = uilabel(g, 'Text', labelStr, 'FontSize', 9, ...
-    'FontColor', [0.55 0.55 0.55]);
-lbl.Layout.Row    = 1;
-lbl.Layout.Column = 1;
-val = uilabel(g, 'Text', valueStr, 'FontSize', 12, 'FontWeight', 'bold');
-val.Layout.Row    = 2;
-val.Layout.Column = 1;
-end
-
-function field = makeField(parent, labelStr, row, col, type, default)
-p = uipanel(parent, 'BorderType', 'none', 'BackgroundColor', 'w');
-p.Layout.Row    = row;
-p.Layout.Column = col;
-g = uigridlayout(p, [2 1]);
-g.RowHeight       = {16, '1x'};
-g.Padding         = [0 0 0 0];
-g.RowSpacing      = 2;
-g.BackgroundColor = 'w';
-lbl = uilabel(g, 'Text', labelStr, 'FontSize', 10, ...
-    'FontColor', [0.45 0.45 0.45]);
-lbl.Layout.Row    = 1;
-lbl.Layout.Column = 1;
-switch type
-    case 'edit'
-        field = uieditfield(g, 'text', 'Value', default);
-    case 'drop'
-        field = uidropdown(g, 'Items', default);
-end
-field.Layout.Row    = 2;
-field.Layout.Column = 1;
-end
-
-function makeNoiseChip(parent, labelStr, valueStr, col)
-p = uipanel(parent, 'BorderType', 'none', 'BackgroundColor', 'w');
-p.Layout.Row    = 1;
-p.Layout.Column = col;
-g = uigridlayout(p, [2 1]);
-g.RowHeight       = {'1x', '1x'};
-g.Padding         = [0 0 0 0];
-g.RowSpacing      = 2;
-g.BackgroundColor = 'w';
-lbl = uilabel(g, 'Text', labelStr, 'FontSize', 9, ...
-    'FontColor', [0.55 0.55 0.55]);
-lbl.Layout.Row    = 1;
-lbl.Layout.Column = 1;
-val = uilabel(g, 'Text', valueStr, 'FontSize', 13, 'FontWeight', 'bold');
-val.Layout.Row    = 2;
-val.Layout.Column = 1;
-end
-
-function txt = calBadgeText(name, cal)
-if isempty(cal)
-    txt = sprintf('%s — none', name);
-else
-    txt = sprintf('%s ✓', name);
-end
-end
-
-function c = calBadgeColor(cal)
-if isempty(cal)
-    c = [1.0 0.95 0.88];
-else
-    c = [0.88 0.96 0.93];
-end
-end
-
-function c = calBadgeFontColor(cal)
-if isempty(cal)
-    c = [0.52 0.31 0.05];
-else
-    c = [0.07 0.39 0.28];
-end
-end
-
 function sig = baselineCorrect(sig, t)
-pre_stim_idx = t < 0;
-if any(pre_stim_idx) && ~all(sig(pre_stim_idx) == 0)
-    sig = sig - mean(sig(pre_stim_idx));
-end
+    pre_stim_idx = t < 0;
+    if any(pre_stim_idx) && ~all(sig(pre_stim_idx) == 0)
+        sig = sig - mean(sig(pre_stim_idx));
+    end
 end

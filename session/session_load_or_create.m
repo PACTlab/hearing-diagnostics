@@ -148,7 +148,7 @@ end
 
 end
 
-
+%% Functions for handling button clicks
 function [save_dir, metadata] = handleNew()
     save_dir = '';
     metadata = [];
@@ -183,6 +183,7 @@ function [save_dir, metadata] = handleResumeLast()
         uialert(uifigure, e.message, 'Could not load last session');
     end
 end
+
 function [save_dir, metadata] = handleResumeOther()
     save_dir = '';
     metadata = [];

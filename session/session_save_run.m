@@ -69,8 +69,21 @@ metadata.total_runs = metadata.total_runs + 1;
 %% --- Build filename ---
 
 fname    = session_build_filename(metadata, params);
-filepath = fullfile(save_dir, fname);
 
+filepath = fullfile(save_dir, fname);
+ 
+% Never overwrite an existing run file. metadata.total_runs is held per
+% GUI, so two windows on the same session can generate the same run
+% number; save() would replace the earlier file silently.
+if exist(filepath, 'file')
+    error('session_save_run:fileExists', ...
+        ['Run file already exists and will not be overwritten:\n  %s\n' ...
+         'metadata.total_runs is %d. This usually means two measure ' ...
+         'windows are open on the same session, each holding its own ' ...
+         'copy of the metadata. Close one, reopen it from the launcher ' ...
+         'so it reloads metadata from disk, and rerun this level.'], ...
+        filepath, metadata.total_runs);
+end
 %% --- Save run file ---
 
 save(filepath, 'run', '-v7.3');

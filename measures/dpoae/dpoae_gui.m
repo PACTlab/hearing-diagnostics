@@ -13,10 +13,6 @@ if isempty(save_dir)
     if isempty(save_dir); return; end
 end
 
-%% --- To Do --
-% Handle calibration
-warning('off', 'Session:noTransducerCal');
-
 %% --- Load the General Config --- 
 cfg = config_load();
 

@@ -1,15 +1,11 @@
-function efr_gui(save_dir, metadata, launcher_fig)
+function efr_gui(save_dir, metadata)
 % EFR_GUI  Main EFR data collection window.
 % Launches session selection first, then opens main acquisition window.
 
-if nargin < 3; launcher_fig = []; end
 if nargin < 2; metadata = []; end
 if nargin < 1; save_dir = ''; end
 
 %% --- To Do --
-% Handle calibration
-warning('off', 'Session:noTransducerCal');
-
 % fix getting Gui params
 
 %% --- Session ---
@@ -119,12 +115,13 @@ divLbl.Layout.Row    = 1;
 divLbl.Layout.Column = 6;
 
 % Cal status badges
+calBadge = gui_cal_badge('Transducer', transducer_cal); 
 transducerCalLbl = uilabel(subGrid, ...
     'Text',                calBadgeText('Transducer', transducer_cal), ...
     'FontSize',            11, ...
     'HorizontalAlignment', 'center', ...
-    'BackgroundColor',     calBadgeColor(transducer_cal), ...
-    'FontColor',           calBadgeFontColor(transducer_cal));
+    'BackgroundColor',     calBadge.badgeColor, ...
+    'FontColor',           calBadge.fontColor) ;
 transducerCalLbl.Layout.Row    = 1;
 transducerCalLbl.Layout.Column = 7;
 
@@ -407,13 +404,6 @@ xlabel(prevAx, 'Time (ms)');
     end
 
     function onCloseRequest()
-        % TODO: restore before deployment
-        % if state.running
-        %     uialert(fig, ...
-        %         'Stop data collection before quitting.', ...
-        %         'Cannot quit');
-        %     return
-        % end
         sel = uiconfirm(fig, ...
             'End this session and close ABR?', ...
             'Quit ABR', ...
@@ -421,12 +411,6 @@ xlabel(prevAx, 'Time (ms)');
             'DefaultOption', 2, ...
             'CancelOption',  2);
         if strcmp(sel, 'Quit')
-            if ~isempty(launcher_fig) && isvalid(launcher_fig)
-                % Re-enable launcher buttons
-                buttons = findobj(launcher_fig, 'Type', 'Button');
-                set(buttons, 'Enable', 'on');
-                % Keep placeholders disabled
-            end
             delete(fig);
             if ~isempty(tdt)
                 tdt_close(tdt);
@@ -439,7 +423,7 @@ xlabel(prevAx, 'Time (ms)');
 %% ================================================================
 
     function p = readParamsFromGui()
-        p = project_load_defaults('abr', metadata.project);
+        p = project_load_defaults('efr', metadata.project);
         p.stim_type    = lower(strrep(stimTypeDrop.Value, ' ', ''));
         p.stimFile = lower(stimFile.Value); 
         p.frequency_hz = str2double(freqField.Value);
@@ -575,93 +559,5 @@ xlabel(prevAx, 'Time (ms)');
         % will pick up the new polarity selection automatically
     end
 
-    
-
 end   % efr_gui
 
-%% ================================================================
-%  LOCAL FUNCTIONS
-%% ================================================================
-
-function makeInfoChip(parent, labelStr, valueStr, col)
-p = uipanel(parent, 'BorderType', 'none', 'BackgroundColor', 'w');
-p.Layout.Row    = 1;
-p.Layout.Column = col;
-g = uigridlayout(p, [2 1]);
-g.RowHeight       = {'1x', '1x'};
-g.Padding         = [0 2 0 2];
-g.RowSpacing      = 0;
-g.BackgroundColor = 'w';
-lbl = uilabel(g, 'Text', labelStr, 'FontSize', 9, ...
-    'FontColor', [0.55 0.55 0.55]);
-lbl.Layout.Row    = 1;
-lbl.Layout.Column = 1;
-val = uilabel(g, 'Text', valueStr, 'FontSize', 12, 'FontWeight', 'bold');
-val.Layout.Row    = 2;
-val.Layout.Column = 1;
-end
-
-function field = makeField(parent, labelStr, row, col, type, default)
-p = uipanel(parent, 'BorderType', 'none', 'BackgroundColor', 'w');
-p.Layout.Row    = row;
-p.Layout.Column = col;
-g = uigridlayout(p, [2 1]);
-g.RowHeight       = {16, '1x'};
-g.Padding         = [0 0 0 0];
-g.RowSpacing      = 2;
-g.BackgroundColor = 'w';
-lbl = uilabel(g, 'Text', labelStr, 'FontSize', 10, ...
-    'FontColor', [0.45 0.45 0.45]);
-lbl.Layout.Row    = 1;
-lbl.Layout.Column = 1;
-switch type
-    case 'edit'
-        field = uieditfield(g, 'text', 'Value', default);
-    case 'drop'
-        field = uidropdown(g, 'Items', default);
-end
-field.Layout.Row    = 2;
-field.Layout.Column = 1;
-end
-
-function makeNoiseChip(parent, labelStr, valueStr, col)
-p = uipanel(parent, 'BorderType', 'none', 'BackgroundColor', 'w');
-p.Layout.Row    = 1;
-p.Layout.Column = col;
-g = uigridlayout(p, [2 1]);
-g.RowHeight       = {'1x', '1x'};
-g.Padding         = [0 0 0 0];
-g.RowSpacing      = 2;
-g.BackgroundColor = 'w';
-lbl = uilabel(g, 'Text', labelStr, 'FontSize', 9, ...
-    'FontColor', [0.55 0.55 0.55]);
-lbl.Layout.Row    = 1;
-lbl.Layout.Column = 1;
-val = uilabel(g, 'Text', valueStr, 'FontSize', 13, 'FontWeight', 'bold');
-val.Layout.Row    = 2;
-val.Layout.Column = 1;
-end
-
-function txt = calBadgeText(name, cal)
-if isempty(cal)
-    txt = sprintf('%s — none', name);
-else
-    txt = sprintf('%s ✓', name);
-end
-end
-
-function c = calBadgeColor(cal)
-if isempty(cal)
-    c = [1.0 0.95 0.88];
-else
-    c = [0.88 0.96 0.93];
-end
-end
-
-function c = calBadgeFontColor(cal)
-if isempty(cal)
-    c = [0.52 0.31 0.05];
-else
-    c = [0.07 0.39 0.28];
-end
-end

@@ -8,13 +8,28 @@ function [f1,RP,FS]=load_play_circuit(config, measure_type, FS_tag,fig_num,USB_c
 %------------
 % Hari Bharadwaj, September 6, 2010
 %------------
-warning('off'); 
+
+% TODO: narrow this to the specific identifiers the ActiveX calls emit.
+% Run with warnings on, note the identifiers, and list them explicitly.
+prev_warning_state = warning;
+warning('off', 'all');
+restore_warnings   = onCleanup(@() warning(prev_warning_state)); 
+
+% Switch based on if ephys and using the medusa or the standard mic in
 switch measure_type
     case 'ephys'
-       CIR_PATH=[config.hardware.circuit_dir, 'BasicPlayRecord_Medusa.rcx']; %The *.rco circuit used to play the files
+       circuit_file = 'BasicPlayRecord_Medusa.rcx';
     otherwise 
-        CIR_PATH=[config.hardware.circuit_dir, 'BasicPlayRecord.rcx']; %The *.rco circuit used to play the files
+        circuit_file = 'BasicPlayRecord.rcx';
 end
+
+CIR_PATH = fullfile(config.hardware.circuit_dir, circuit_file);
+ 
+if ~exist(CIR_PATH, 'file')
+    error('load_play_circuit:circuitNotFound', ...
+        'RPvds circuit not found: %s', CIR_PATH);
+end
+
 %Generate the actx control window in a specified figure:
 %-------------------------------------------------------
 f1=figure(fig_num);

@@ -10,6 +10,7 @@ projects/*/index/*
 calibration/data/transducer/
 calibration/data/probe_checks/records/
 calibration/data/probe_checks/references/
+calibration/FPL/data
 
 # Keep folder structure but not contents
 !calibration/data/transducer/.gitkeep
